@@ -106,6 +106,15 @@ html[data-theme="light"] .pill { background: rgba(255,255,255,.94); }
 html[data-theme="light"] .note, html[data-theme="light"] .pdel { background: rgba(255,255,255,.9); }
 html[data-theme="light"] .dtool .dc { background: conic-gradient(var(--fg) var(--p), rgba(0,0,0,.14) 0); }
 html[data-theme="light"] .dtool .di { background: linear-gradient(145deg, #ffffff, #e4e7ed); }
+html[data-theme="light"] input[type=range]::-webkit-slider-runnable-track { background: repeating-linear-gradient(90deg, #4a505c 0 2px, transparent 2px 8px); }
+html[data-theme="light"] input[type=range]::-moz-range-track { background: repeating-linear-gradient(90deg, #4a505c 0 2px, transparent 2px 8px); }
+html[data-theme="light"] input[type=range]::-webkit-slider-thumb { box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+html[data-theme="light"] input[type=range]::-moz-range-thumb { box-shadow: 0 0 0 1px rgba(0,0,0,.35); }
+html[data-theme="light"] .cdot[aria-pressed="true"] { box-shadow: 0 0 0 2.5px var(--fg); }
+/* Export button and the buttons inside the export screen follow the theme: black on the light theme, light on the dark theme */
+#export, #close, #sheet .chip[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); font-weight: 600; }
+#sheet .chch { --c: var(--fg) !important; }
+#sheet .chch[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
 html[data-theme="light"] .sheet { background: rgba(243,244,247,.97); }
 #settings .chch { background: var(--bg); border-color: var(--line); color: var(--muted); }
 #settings .chch[aria-pressed="true"] { background: var(--fg); border-color: var(--fg); color: var(--bg); }
@@ -629,8 +638,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   }
 
   /* box blur on RGBA data (alpha untouched), edge-clamped */
+  var bbOut = null, bbTmp = null; /* reused between calls: each result is finished with before the next blur runs */
   function boxBlur(data, w, h, r) {
-    var out = new Uint8ClampedArray(data.length), tmp = new Float32Array(w * h * 3), n = 2 * r + 1, x, y, c, k, sum;
+    if (!bbOut || bbOut.length !== data.length) bbOut = new Uint8ClampedArray(data.length);
+    if (!bbTmp || bbTmp.length !== w * h * 3) bbTmp = new Float32Array(w * h * 3);
+    var out = bbOut, tmp = bbTmp, n = 2 * r + 1, x, y, c, k, sum;
     for (y = 0; y < h; y++) {
       for (c = 0; c < 3; c++) {
         var row = y * w * 4 + c; sum = 0;
@@ -715,7 +727,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function applyPerspective(fg, tw, th) {
     var kv = (state.persV || 0) / 100 * 0.4, kh = (state.persH || 0) / 100 * 0.4, pg = perspCv.getContext('2d'), z, m, a, sz;
     if (kv) {
-      perspCv.width = tw; perspCv.height = th; pg.drawImage(fullCv, 0, 0);
+      sz(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
       z = 1 / (1 - Math.abs(kv)); fg.clearRect(0, 0, tw, th);
       for (a = 0; a < th; a++) {
         m = z * (1 + kv * (1 - 2 * a / th)); sz = tw / m;
@@ -723,7 +735,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       }
     }
     if (kh) {
-      perspCv.width = tw; perspCv.height = th; pg.drawImage(fullCv, 0, 0);
+      sz(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
       z = 1 / (1 - Math.abs(kh)); fg.clearRect(0, 0, tw, th);
       for (a = 0; a < tw; a++) {
         m = z * (1 + kh * (1 - 2 * a / tw)); sz = th / m;
@@ -731,47 +743,87 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       }
     }
   }
-  function draw(target, scale, plain, crop) {
+  /* resize a canvas only when needed (resizing reallocates it); otherwise just clear it */
+  function sz(cv, w, h) {
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    else cv.getContext('2d').clearRect(0, 0, w, h);
+  }
+  function dims(scale, cr) {
     var w = src.width, h = src.height, swap = state.rot % 180 !== 0;
     var tw = Math.max(1, Math.round((swap ? h : w) * scale));
     var th = Math.max(1, Math.round((swap ? w : h) * scale));
-    var cr = crop || state.crop;
+    cr = cr || state.crop;
     var cx = Math.round(cr.x * tw), cy = Math.round(cr.y * th);
     var cw = Math.max(1, Math.round(cr.w * tw)), ch = Math.max(1, Math.round(cr.h * th));
     if (cx + cw > tw) cw = tw - cx;
     if (cy + ch > th) ch = th - cy;
+    return { tw: tw, th: th, cx: cx, cy: cy, cw: cw, ch: ch };
+  }
+  /* the cropped, rotated, straightened picture before any colour edits: kept while only colour sliders move */
+  var baseCv = document.createElement('canvas'), baseKey = '', srcSeq = 0;
+  function srcId() { return src.__zid || (src.__zid = ++srcSeq); }
+  function draw(target, scale, plain, crop, cacheOK) {
+    var w = src.width, h = src.height, D = dims(scale, crop);
+    var tw = D.tw, th = D.th, cx = D.cx, cy = D.cy, cw = D.cw, ch = D.ch;
     var geo = { scale: scale, ox: cx - tw / 2, oy: cy - th / 2 };
     if (target === view) viewGeo = geo;
-    target.width = cw; target.height = ch;
+    sz(target, cw, ch);
     var ctx = target.getContext('2d', { willReadFrequently: true });
     var usePersp = !!(state.persV || state.persH), useSpots = !!(state.spots && state.spots.length && !plain);
-    if (usePersp || useSpots) {
-      fullCv.width = tw; fullCv.height = th;
-      var fg = fullCv.getContext('2d', { willReadFrequently: true });
-      drawBase(fg, w, h, scale, tw / 2, th / 2, tw, th);
-      if (usePersp) applyPerspective(fg, tw, th);
-      if (useSpots) applySpots(fg, tw, th, scale);
-      ctx.drawImage(fullCv, cx, cy, cw, ch, 0, 0, cw, ch);
+    var key = cacheOK ? [srcId(), w, h, scale, tw, th, cx, cy, cw, ch, state.rot, state.angle, state.fx, state.fy, state.persV, state.persH, useSpots ? JSON.stringify(state.spots) : ''].join('|') : '';
+    if (cacheOK && key === baseKey) {
+      ctx.drawImage(baseCv, 0, 0);
     } else {
-      drawBase(ctx, w, h, scale, tw / 2 - cx, th / 2 - cy, tw, th);
+      if (usePersp || useSpots) {
+        sz(fullCv, tw, th);
+        var fg = fullCv.getContext('2d', { willReadFrequently: true });
+        drawBase(fg, w, h, scale, tw / 2, th / 2, tw, th);
+        if (usePersp) applyPerspective(fg, tw, th);
+        if (useSpots) applySpots(fg, tw, th, scale);
+        ctx.drawImage(fullCv, cx, cy, cw, ch, 0, 0, cw, ch);
+      } else {
+        drawBase(ctx, w, h, scale, tw / 2 - cx, th / 2 - cy, tw, th);
+      }
+      if (cacheOK) { sz(baseCv, cw, ch); baseCv.getContext('2d').drawImage(target, 0, 0); baseKey = key; }
     }
     if (!plain) { process(ctx, cw, ch, geo); detail(ctx, cw, ch, scale); }
   }
 
+  /* while a slider is being dragged on a slower phone, draw a lighter preview and finish in full quality when the finger pauses */
+  var lowCv = document.createElement('canvas'), liveFast = false, fastTimer = 0, lastSched = 0, lastEnd = 0, lastFullMs = 0;
   function render() {
     queued = false;
+    var t0 = performance.now();
     var s = Math.min(1, MAX_PREVIEW / Math.max(src.width, src.height));
     if (cropMode) {
-      draw(view, s, showOriginal, FULL);
+      draw(view, s, showOriginal, FULL, true);
       drawCropOverlay();
+    } else if (liveFast && activeTab !== 'local' && activeTab !== 'heal') {
+      var D = dims(s);
+      if (view.width !== D.cw || view.height !== D.ch) { view.width = D.cw; view.height = D.ch; }
+      viewGeo = { scale: s, ox: D.cx - D.tw / 2, oy: D.cy - D.th / 2 };
+      draw(lowCv, s * Math.max(0.4, Math.min(0.75, Math.sqrt(60 / Math.max(1, lastFullMs)))), showOriginal, null, true);
+      vctx.imageSmoothingEnabled = true;
+      vctx.clearRect(0, 0, D.cw, D.ch);
+      vctx.drawImage(lowCv, 0, 0, lowCv.width, lowCv.height, 0, 0, D.cw, D.ch);
+      updateHist();
     } else {
-      draw(view, s, showOriginal);
+      draw(view, s, showOriginal, null, true);
       updateHist();
       if (activeTab === 'local' && !showOriginal) drawMaskOverlay();
       else if (activeTab === 'heal') drawHealOverlay();
+      lastFullMs = performance.now() - t0;
     }
+    lastEnd = performance.now();
   }
   function schedule() {
+    /* a drag keeps calling this either right after the last call or right after the last draw finished */
+    var now = performance.now(), burst = now - Math.max(lastSched, lastEnd) < 120;
+    lastSched = now;
+    if (burst && lastFullMs > 45) {
+      liveFast = true; clearTimeout(fastTimer);
+      fastTimer = setTimeout(function () { liveFast = false; if (!queued) { queued = true; requestAnimationFrame(render); } }, 170);
+    }
     if (queued) return;
     queued = true;
     requestAnimationFrame(render);
@@ -992,16 +1044,17 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       var W = Math.round(r.width * dpr), H = Math.round(r.height * dpr);
       if (cv.width !== W || cv.height !== H) { cv.width = W; cv.height = H; }
       var g = cv.getContext('2d'), cx = W / 2, u, x, a, th;
+      var light = document.documentElement.getAttribute('data-theme') === 'light', tickRGB = light ? '20,22,27' : '236,238,242';
       g.clearRect(0, 0, W, H);
       for (u = Math.ceil(d.min / 5) * 5; u <= d.max; u += 5) {
         x = cx + (u - v) * PPU * dpr;
         if (x < 0 || x > W) continue;
         a = Math.pow(Math.max(0, 1 - Math.abs(x - cx) / (W / 2)), 1.3) * 0.75;
         th = 0.36; if (u % 25 === 0) a = Math.min(1, a * 1.5);
-        g.fillStyle = 'rgba(236,238,242,' + a + ')';
+        g.fillStyle = 'rgba(' + tickRGB + ',' + a + ')';
         g.fillRect(Math.round(x - dpr / 2), H * (0.5 - th / 2), Math.max(1, Math.round(1.6 * dpr)), H * th);
       }
-      g.fillStyle = v ? '#ff7a3d' : '#ffffff';
+      g.fillStyle = v ? '#ff7a3d' : (light ? '#14161b' : '#ffffff');
       g.fillRect(Math.round(cx - dpr), H * 0.18, Math.round(2 * dpr), H * 0.64);
     }
     function refresh() {
@@ -1921,12 +1974,13 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       o.setAttribute('aria-selected', String(on));
       $('p-' + o.dataset.tab).hidden = !on;
     });
+    var prevTab = activeTab;
     activeTab = name;
     view.classList.toggle('drawing', name === 'local' || name === 'heal');
     if (name === 'local') { syncLocal(); }
     if (name === 'heal') { syncHeal(); flash(healMode === 'clone' ? 'Tap to set the source, then paint' : 'Paint over what you want to remove'); }
     if (name === 'library') renderLibrary();
-    schedule();
+    if (name === 'local' || name === 'heal' || prevTab === 'local' || prevTab === 'heal') schedule(); /* the picture itself is unchanged by switching tools */
     if (name === 'curve') { sizeCurve(); drawCurve(); }
     if (name === 'crop' && !cropMode) startCrop();
   }
@@ -2056,6 +2110,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function applySettings() {
     MAX_PREVIEW = settings.preview; MAX_SRC = settings.imp; $('hist').hidden = !settings.hist;
     document.documentElement.setAttribute('data-theme', settings.dark === false ? 'light' : 'dark');
+    dialRefreshers.forEach(function (f) { f(); }); /* the rulers are canvases, so they need redrawing in the new theme colours */
     if (rot !== (settings.rot || 0)) { rot = settings.rot || 0; document.documentElement.setAttribute('data-rot', String(rot)); window.dispatchEvent(new Event('resize')); }
     schedule();
   }
