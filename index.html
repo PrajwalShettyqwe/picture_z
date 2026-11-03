@@ -221,7 +221,58 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
 .sheet p { margin: 0; text-align: center; max-width: 36ch; line-height: 1.45; }
 .sheet p small { color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) { .btn, .chip, .tool { transition: background-color .12s, border-color .12s; } }
+/* Front end: splash, home, drafts, account */
+.scr { position: fixed; inset: 0; z-index: 60; background: var(--bg); color: var(--fg); display: flex; flex-direction: column; padding: env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px); transition: opacity .35s; }
+.scr.out { opacity: 0; pointer-events: none; }
+#splash { z-index: 80; align-items: center; justify-content: center; }
+#splash .name { font-family: var(--font-display); font-weight: 800; font-size: 44px; letter-spacing: .5px; }
+#splash .name b { color: var(--accent); }
+#splash .spin { position: absolute; bottom: calc(56px + env(safe-area-inset-bottom,0px)); }
+.spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: pzspin .8s linear infinite; }
+@keyframes pzspin { to { transform: rotate(360deg); } }
+.htop { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; }
+.htop .brand { font-family: var(--font-display); font-weight: 800; font-size: 22px; }
+.htop .brand b { color: var(--accent); }
+.avatar { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 700; font-size: 18px; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0; }
+.avatar img { width: 100%; height: 100%; object-fit: cover; }
+.avatar.guest { background: var(--surface); color: var(--muted); border: 1px solid var(--line); }
+.avatar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.hmid { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 0 28px 60px; }
+.hbtn { width: min(320px, 100%); padding: 18px; border-radius: 14px; font-size: 17px; font-weight: 600; border: 1px solid var(--line); background: var(--surface); }
+.hbtn.main { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.hbtn small { display: block; font-weight: 400; font-size: 12px; opacity: .75; margin-top: 2px; }
+.dtop { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+.dtop h2 { margin: 0; font-family: var(--font-display); font-size: 20px; }
+.dgrid { flex: 1; overflow: auto; padding: 4px 16px 24px; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; align-content: start; }
+.dcard { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; position: relative; }
+.dcard button.open { display: block; width: 100%; border: 0; background: none; padding: 0; text-align: left; }
+.dcard img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--line); }
+.dcard .meta { padding: 8px 10px 10px; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dcard .meta b { display: block; color: var(--fg); font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; }
+.dcard .del { position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 16px; line-height: 1; }
+.dempty { grid-column: 1/-1; text-align: center; color: var(--muted); padding: 60px 20px; line-height: 1.5; }
+.acct { position: fixed; inset: 0; z-index: 90; background: rgba(0,0,0,.5); display: flex; align-items: flex-start; justify-content: flex-end; padding: 62px 14px; }
+.acct .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px; width: min(300px, 100%); display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+.acct .who { display: flex; gap: 12px; align-items: center; }
+.acct .who div { min-width: 0; } .acct .who b, .acct .who span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .acct .who span { color: var(--muted); font-size: 13px; }
+.acct p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.45; }
+#gbtn { display: flex; justify-content: center; min-height: 44px; }
+.backb { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 8px 12px; font-size: 14px; }
 </style>
+
+<div class="scr" id="splash"><div class="name">Picture <b>Z</b></div><div class="spin" aria-label="Loading"></div></div>
+<div class="scr" id="home" hidden>
+  <div class="htop"><div class="brand">Picture <b>Z</b></div><button class="avatar guest" id="avatar" type="button" aria-label="Account"></button></div>
+  <div class="hmid">
+    <button class="hbtn main" id="h-new" type="button">New edit<small>Choose a photo to start</small></button>
+    <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
+  </div>
+</div>
+<div class="scr" id="drafts" hidden>
+  <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
+  <div class="dgrid" id="dgrid"></div>
+</div>
+<div class="acct" id="acct" hidden><div class="card" id="acct-card"></div></div>
 
 <div class="bar">
   <div class="brand">Picture <b>Z</b></div>
@@ -395,6 +446,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     <div class="chips" id="set-preview"></div>
     <p class="hint" style="margin:6px 0 0">Import size for photos you open next</p>
     <div class="chips" id="set-import"></div>
+    <p class="hint" style="margin:6px 0 0" id="set-gpu-hint">Graphics chip (faster editing)</p>
+    <div class="chips" id="set-gpu"></div>
+    <p class="hint" style="margin:6px 0 0">Picture quality (needs the graphics chip)</p>
+    <div class="chips" id="set-enh"></div>
     <p class="hint" style="margin:6px 0 0">Histogram on the photo</p>
     <div class="chips" id="set-hist"></div>
     <p class="hint" style="margin:6px 0 0">Dark theme</p>
@@ -481,6 +536,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
 
   /* ---------- history ---------- */
   function commit() {
+    if (typeof scheduleDraft === "function") scheduleDraft();
     history.length = hIndex + 1;
     history.push(JSON.stringify(state));
     if (history.length > HISTORY_MAX) history.shift();
@@ -549,7 +605,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var lr = luts && luts[0], lg = luts && luts[1], lb = luts && luts[2];
 
     var img = ctx.getImageData(0, 0, w, h), d = img.data;
-    var mlist = wantMasks.map(function (m) { return { w: maskWeights(m, w, h, geo, d), e: m.adj.e, c: m.adj.c, s: m.adj.s, t: m.adj.t }; });
+    var mlist = wantMasks.map(function (m) { return { w: maskWeightsCached(m, w, h, geo, function () { return d; }), e: m.adj.e, c: m.adj.c, s: m.adj.s, t: m.adj.t }; });
     var cx = w / 2, cy = h / 2, x, y, i = 0;
     for (y = 0; y < h; y++) {
       for (x = 0; x < w; x++, i += 4) {
@@ -694,6 +750,419 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     ctx.putImageData(img, 0, 0);
   }
 
+  /* ---------- graphics chip (WebGL2): the colour and detail maths of process() and detail(), run on the GPU ----------
+     Classic mode reproduces the CPU result. Enhanced mode adds linear-light exposure with a soft highlight roll-off,
+     local (edge-aware) highlights/shadows, edge-preserving noise reduction, clarity and texture, luminance-only
+     sharpening and dithering. Masks and perspective are handled here too. */
+  var gl = null, gpu = { ok: false, tried: false, cv: null, prog: {}, tex: [], fbo: [], w: 0, h: 0, ifmt: 0, itype: 0, src: null, geo: null, lut: null, mix: null, maskTex: null, srcKey: null, geoKey: null, maskKey: null, maskBuf: null, maxTex: 0 };
+  var GVS = '#version 300 es\nvoid main(){ vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }';
+  var GHEAD = ['#version 300 es', 'precision highp float; precision highp int; precision highp sampler2D;',
+    'const vec3 LW = vec3(' + L[0] + ', ' + L[1] + ', ' + L[2] + ');', 'out vec4 outc;'].join('\n') + '\n';
+  var GIMG = 'uniform sampler2D uImg; uniform ivec2 uSize; uniform int uFlip;\nvec4 img(ivec2 fc) { return texelFetch(uImg, uFlip == 1 ? ivec2(fc.x, uSize.y - 1 - fc.y) : fc, 0); }\n';
+  var GMAIN = GHEAD + [
+    'uniform sampler2D uTex; uniform sampler2D uMix; uniform sampler2D uLut; uniform sampler2D uLocalL; uniform sampler2D uMaskT;',
+    'uniform ivec2 uSize;',
+    'uniform float uGain, uC, uHl, uSh, uTemp, uTint, uVib, uSat, uVig, uGrain, uDz;',
+    'uniform int uTone, uWB, uSatOn, uMixOn, uGradeOn, uLutOn, uFmOn, uFlip, uEnh, uLocal, uMaskN;',
+    'uniform vec3 uZs, uZm, uZh;',
+    'uniform vec4 uFR, uFG, uFB, uME, uMC, uMS, uMT;',
+    'float hue2(float p, float q, float t) {',
+    '  if (t < 0.0) t += 1.0; if (t > 1.0) t -= 1.0;',
+    '  if (t < 1.0 / 6.0) return p + (q - p) * 6.0 * t;',
+    '  if (t < 0.5) return q;',
+    '  if (t < 2.0 / 3.0) return p + (q - p) * (2.0 / 3.0 - t) * 6.0;',
+    '  return p;',
+    '}',
+    'vec3 hsl2rgb(float h, float s, float l) {',
+    '  if (s == 0.0) return vec3(l * 255.0);',
+    '  float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s; float p = 2.0 * l - q; float hk = h / 360.0;',
+    '  return vec3(hue2(p, q, hk + 1.0 / 3.0), hue2(p, q, hk), hue2(p, q, hk - 1.0 / 3.0)) * 255.0;',
+    '}',
+    'float s2l(float c) { return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4); }',
+    'float l2s(float l) { return l <= 0.0031308 ? l * 12.92 : 1.055 * pow(l, 1.0 / 2.4) - 0.055; }',
+    'void main() {',
+    '  ivec2 fc = ivec2(gl_FragCoord.xy); int x = fc.x; int y = uSize.y - 1 - fc.y;',
+    '  vec4 px = texelFetch(uTex, uFlip == 1 ? ivec2(x, y) : fc, 0);',
+    '  float r = px.r * 255.0, g = px.g * 255.0, b = px.b * 255.0;',
+    '  if (uGain != 1.0) {',
+    '    if (uEnh == 1) {', /* exposure in linear light; the brightest channel rolls off softly instead of clipping */
+    '      vec3 lin = vec3(s2l(r / 255.0), s2l(g / 255.0), s2l(b / 255.0)) * uGain;',
+    '      float knee = uGain > 1.0 ? mix(1.0, 0.75, smoothstep(0.0, 0.3, uGain - 1.0)) : 1.0;',
+    '      float mxl = max(lin.r, max(lin.g, lin.b));',
+    '      if (mxl > knee) { float nm = knee >= 0.999 ? 1.0 : knee + (1.0 - knee) * (1.0 - exp(-(mxl - knee) / (1.0 - knee))); lin *= nm / mxl; }',
+    '      r = l2s(clamp(lin.r, 0.0, 1.0)) * 255.0; g = l2s(clamp(lin.g, 0.0, 1.0)) * 255.0; b = l2s(clamp(lin.b, 0.0, 1.0)) * 255.0;',
+    '    } else { r *= uGain; g *= uGain; b *= uGain; }',
+    '  }',
+    '  if (uWB == 1) { r += uTemp * 0.3 + uTint * 0.1; g -= uTint * 0.25; b += -uTemp * 0.3 + uTint * 0.1; }',
+    '  if (uTone == 1) {',
+    '    float lum;',
+    '    if (uLocal == 1) { float lb = texelFetch(uLocalL, fc, 0).r; if (uGain != 1.0) lb = l2s(clamp(s2l(lb) * uGain, 0.0, 1.0)); lum = clamp(lb, 0.0, 1.0); }',
+    '    else lum = clamp((LW.x * r + LW.y * g + LW.z * b) / 255.0, 0.0, 1.0);',
+    '    float dl = uSh * (1.0 - lum) * (1.0 - lum) * 70.0 + uHl * lum * lum * 70.0; r += dl; g += dl; b += dl;',
+    '  }',
+    '  if (uDz != 0.0) {',
+    '    float mnv = min(r, min(g, b));',
+    '    if (uDz > 0.0) { float veil = uDz * 0.6 * mnv; float tr = 255.0 / (255.0 - veil); r = (r - veil) * tr; g = (g - veil) * tr; b = (b - veil) * tr; }',
+    '    else { float hz = -uDz * 0.35; r += (225.0 - r) * hz; g += (225.0 - g) * hz; b += (228.0 - b) * hz; }',
+    '  }',
+    '  if (uC != 1.0) { r = (r - 128.0) * uC + 128.0; g = (g - 128.0) * uC + 128.0; b = (b - 128.0) * uC + 128.0; }',
+    '  if (uSatOn == 1) {',
+    '    float mx = max(r, max(g, b)), mn = min(r, min(g, b)); float chroma = clamp((mx - mn) / 255.0, 0.0, 1.0);',
+    '    float f = uSat * (1.0 + uVib * (1.0 - chroma)); float l2 = LW.x * r + LW.y * g + LW.z * b;',
+    '    r = l2 + (r - l2) * f; g = l2 + (g - l2) * f; b = l2 + (b - l2) * f;',
+    '  }',
+    '  if (uMaskN > 0) {',
+    '    vec4 mw = texelFetch(uMaskT, ivec2(x, y), 0);',
+    '    for (int mi = 0; mi < 4; mi++) {',
+    '      if (mi >= uMaskN) break;',
+    '      float wg = mw[mi]; if (wg < 0.003) continue;',
+    '      float me = uME[mi], mc = uMC[mi], ms = uMS[mi], mt = uMT[mi];',
+    '      if (me != 0.0) { float gm = pow(2.0, me / 50.0 * wg); r *= gm; g *= gm; b *= gm; }',
+    '      if (mt != 0.0) { r += mt * 0.3 * wg; b -= mt * 0.3 * wg; }',
+    '      if (mc != 0.0) { float cf = 1.0 + mc / 100.0 * wg; r = (r - 128.0) * cf + 128.0; g = (g - 128.0) * cf + 128.0; b = (b - 128.0) * cf + 128.0; }',
+    '      if (ms != 0.0) { float sf = 1.0 + ms / 100.0 * wg; float lm2 = LW.x * r + LW.y * g + LW.z * b; r = lm2 + (r - lm2) * sf; g = lm2 + (g - lm2) * sf; b = lm2 + (b - lm2) * sf; }',
+    '    }',
+    '  }',
+    '  if (uMixOn == 1) {',
+    '    r = clamp(r, 0.0, 255.0); g = clamp(g, 0.0, 255.0); b = clamp(b, 0.0, 255.0);',
+    '    float R1 = r / 255.0, G1 = g / 255.0, B1 = b / 255.0;',
+    '    float vmax = max(R1, max(G1, B1)), vmin = min(R1, min(G1, B1)), dd = vmax - vmin;',
+    '    if (dd > 0.0001) {',
+    '      float ll = (vmax + vmin) / 2.0; float ss = ll > 0.5 ? dd / (2.0 - vmax - vmin) : dd / (vmax + vmin); float hh;',
+    '      if (vmax == R1) hh = (G1 - B1) / dd + (G1 < B1 ? 6.0 : 0.0); else if (vmax == G1) hh = (B1 - R1) / dd + 2.0; else hh = (R1 - G1) / dd + 4.0;',
+    '      hh *= 60.0;',
+    '      int ti = int(hh) % 360; vec3 mt = texelFetch(uMix, ivec2(ti, 0), 0).rgb; float att = min(1.0, ss * 2.5);',
+    '      hh += mt.x * att; if (hh < 0.0) hh += 360.0; else if (hh >= 360.0) hh -= 360.0;',
+    '      ss *= 1.0 + mt.y * att; ss = clamp(ss, 0.0, 1.0);',
+    '      ll += mt.z * att * 0.3; ll = clamp(ll, 0.0, 1.0);',
+    '      vec3 rgb = hsl2rgb(hh, ss, ll); r = rgb.x; g = rgb.y; b = rgb.z;',
+    '    }',
+    '  }',
+    '  if (uGradeOn == 1) {',
+    '    float gq = clamp((LW.x * r + LW.y * g + LW.z * b) / 255.0, 0.0, 1.0);',
+    '    float wS = (1.0 - gq) * (1.0 - gq), wH = gq * gq, wM = 1.0 - abs(2.0 * gq - 1.0);',
+    '    r += uZs.x * wS + uZm.x * wM + uZh.x * wH; g += uZs.y * wS + uZm.y * wM + uZh.y * wH; b += uZs.z * wS + uZm.z * wM + uZh.z * wH;',
+    '  }',
+    '  if (uLutOn == 1) {',
+    '    r = clamp(r, 0.0, 255.0); g = clamp(g, 0.0, 255.0); b = clamp(b, 0.0, 255.0);',
+    '    r = floor(texelFetch(uLut, ivec2(int(r), 0), 0).r * 255.0 + 0.5); g = floor(texelFetch(uLut, ivec2(int(g), 0), 0).g * 255.0 + 0.5); b = floor(texelFetch(uLut, ivec2(int(b), 0), 0).b * 255.0 + 0.5);',
+    '  }',
+    '  if (uFmOn == 1) {',
+    '    r = clamp(r, 0.0, 255.0); g = clamp(g, 0.0, 255.0); b = clamp(b, 0.0, 255.0);',
+    '    float nr = uFR.x * r + uFR.y * g + uFR.z * b + uFR.w; float ng = uFG.x * r + uFG.y * g + uFG.z * b + uFG.w; float nb = uFB.x * r + uFB.y * g + uFB.z * b + uFB.w;',
+    '    r = nr; g = ng; b = nb;',
+    '  }',
+    '  if (uGrain != 0.0) {',
+    '    uint ux = uint(x), uy = uint(y);',
+    '    uint hs = ((ux ^ (uy << 16)) * 2246822519u) ^ ((uy + 1u) * 3266489917u);',
+    '    hs ^= hs >> 15; hs *= 2246822519u; hs ^= hs >> 13;',
+    '    float gn = (float(hs & 1023u) / 511.5 - 1.0) * uGrain; r += gn; g += gn; b += gn;',
+    '  }',
+    '  if (uVig != 0.0) {',
+    '    float cx = float(uSize.x) / 2.0, cy = float(uSize.y) / 2.0; float nx = (float(x) - cx) / cx, ny = (float(y) - cy) / cy;',
+    '    float tv = clamp((sqrt(nx * nx + ny * ny) / 1.4142 - 0.35) / 0.65, 0.0, 1.0); tv = tv * tv * (3.0 - 2.0 * tv);',
+    '    float vf = 1.0 - uVig * 0.85 * tv; r *= vf; g *= vf; b *= vf;',
+    '  }',
+    '  outc = vec4(clamp(vec3(r, g, b), 0.0, 255.0) / 255.0, px.a);',
+    '}'].join('\n');
+  var GBLUR = GHEAD + [
+    'uniform sampler2D uSrc; uniform ivec2 uSize; uniform ivec2 uDir; uniform int uR;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec3 s = vec3(0.0);',
+    '  for (int k = -uR; k <= uR; k++) { s += texelFetch(uSrc, clamp(p + uDir * k, ivec2(0), uSize - 1), 0).rgb; }',
+    '  outc = vec4(s / float(2 * uR + 1), texelFetch(uSrc, p, 0).a);',
+    '}'].join('\n');
+  var GNOISE = GHEAD + [
+    'uniform sampler2D uCur; uniform sampler2D uBlur; uniform float uA;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c = texelFetch(uCur, p, 0); vec3 d = c.rgb * 255.0; vec3 bl = texelFetch(uBlur, p, 0).rgb * 255.0;',
+    '  float dl = abs(dot(LW, d - bl)); float wt = uA * (1.0 - min(1.0, dl / 22.0)); d += (bl - d) * wt;',
+    '  outc = vec4(clamp(d, 0.0, 255.0) / 255.0, c.a);',
+    '}'].join('\n');
+  var GUNSHARP = GHEAD + [
+    'uniform sampler2D uCur; uniform sampler2D uBlur; uniform float uAmt; uniform int uMid;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c = texelFetch(uCur, p, 0); vec3 d = c.rgb * 255.0; vec3 bk = texelFetch(uBlur, p, 0).rgb * 255.0;',
+    '  float m = 1.0; if (uMid == 1) { float q = 2.0 * (dot(LW, d) / 255.0) - 1.0; m = 1.0 - q * q; }',
+    '  d += (d - bk) * (uAmt * m);',
+    '  outc = vec4(clamp(d, 0.0, 255.0) / 255.0, c.a);',
+    '}'].join('\n');
+  /* Enhanced: edge-preserving noise reduction (bilateral), luminance and colour smoothed separately */
+  var GBILAT = GHEAD + [
+    'uniform sampler2D uSrc; uniform ivec2 uSize; uniform int uR; uniform float uA;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c0 = texelFetch(uSrc, p, 0); vec3 d0 = c0.rgb * 255.0; float y0 = dot(LW, d0);',
+    '  float sY = 3.0 + 22.0 * uA, sC = sY * 2.2, sp = float(uR) * 0.6 + 0.4;',
+    '  float i2Y = 1.0 / (2.0 * sY * sY), i2C = 1.0 / (2.0 * sC * sC), i2S = 1.0 / (2.0 * sp * sp);',
+    '  float accY = 0.0, wY = 0.0, wC = 0.0; vec3 accC = vec3(0.0);',
+    '  for (int j = -uR; j <= uR; j++) for (int i = -uR; i <= uR; i++) {',
+    '    vec3 d = texelFetch(uSrc, clamp(p + ivec2(i, j), ivec2(0), uSize - 1), 0).rgb * 255.0; float y = dot(LW, d);',
+    '    float ws = exp(-float(i * i + j * j) * i2S), dd = (y - y0) * (y - y0);',
+    '    float wy = ws * exp(-dd * i2Y), wc = ws * exp(-dd * i2C);',
+    '    accY += wy * y; wY += wy; accC += wc * (d - vec3(y)); wC += wc;',
+    '  }',
+    '  vec3 dn = vec3(accY / wY) + accC / wC;',
+    '  vec3 d = mix(d0, dn, clamp(uA, 0.0, 1.0));',
+    '  outc = vec4(clamp(d, 0.0, 255.0) / 255.0, c0.a);',
+    '}'].join('\n');
+  /* Enhanced: guided filter on luminance (edge-aware smoothing) for clarity, texture and the local tone base */
+  var GP1 = GHEAD + GIMG + 'void main() { float Y = dot(LW, img(ivec2(gl_FragCoord.xy)).rgb); outc = vec4(Y, Y * Y, 0.0, 1.0); }';
+  var GP2 = GHEAD + 'uniform sampler2D uM; uniform float uEps;\nvoid main() { vec2 m = texelFetch(uM, ivec2(gl_FragCoord.xy), 0).rg; float v = max(0.0, m.g - m.r * m.r); float a = v / (v + uEps); outc = vec4(a, m.r * (1.0 - a), 0.0, 1.0); }';
+  var GFLOCAL = GHEAD + GIMG + 'uniform sampler2D uAB;\nvoid main() { ivec2 p = ivec2(gl_FragCoord.xy); vec2 ab = texelFetch(uAB, p, 0).rg; float Y = dot(LW, img(p).rgb); outc = vec4(ab.x * Y + ab.y, 0.0, 0.0, 1.0); }';
+  var GFDETAIL = GHEAD + GIMG + [
+    'uniform sampler2D uAB; uniform float uAmt; uniform int uMid;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c = img(p); vec2 ab = texelFetch(uAB, p, 0).rg;',
+    '  float Y = dot(LW, c.rgb); float delta = (Y - (ab.x * Y + ab.y)) * 255.0;',
+    '  float m = 1.0; if (uMid == 1) { float q = 2.0 * Y - 1.0; m = 1.0 - q * q; }',
+    '  vec3 d = c.rgb * 255.0 + vec3(delta * uAmt * m);',
+    '  outc = vec4(clamp(d, 0.0, 255.0) / 255.0, c.a);',
+    '}'].join('\n');
+  /* Enhanced sharpening: luminance only, with a small gate so flat noise is not boosted */
+  var GSHARPL = GHEAD + [
+    'uniform sampler2D uCur; uniform sampler2D uBlur; uniform float uAmt;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c = texelFetch(uCur, p, 0); vec3 d = c.rgb * 255.0; vec3 bk = texelFetch(uBlur, p, 0).rgb * 255.0;',
+    '  float dY = dot(LW, d - bk); float gate = smoothstep(3.0, 16.0, abs(dY));',
+    '  d += vec3(dY * uAmt * gate);',
+    '  outc = vec4(clamp(d, 0.0, 255.0) / 255.0, c.a);',
+    '}'].join('\n');
+  /* perspective: the same keystone maths as applyPerspective(), done as one inverse-mapping pass */
+  var GWARP = GHEAD + [
+    'uniform sampler2D uGeo; uniform ivec2 uOut; uniform ivec2 uFull; uniform ivec2 uOff; uniform float uKV, uKH;',
+    'void main() {',
+    '  ivec2 fc = ivec2(gl_FragCoord.xy); float tw = float(uFull.x), th = float(uFull.y);',
+    '  float X = float(fc.x + uOff.x) + 0.5, Y = float(uOut.y - 1 - fc.y + uOff.y) + 0.5;',
+    '  float X1 = X, Y1 = Y;',
+    '  if (uKH != 0.0) {',
+    '    float zh = 1.0 / (1.0 - abs(uKH)); float ah = X - 0.5;',
+    '    float szh = th / (zh * (1.0 + uKH * (1.0 - 2.0 * ah / tw)));',
+    '    X1 = tw / 2.0 + (ah - tw / 2.0) / zh + 0.5; Y1 = th / 2.0 - szh / 2.0 + (Y / th) * szh;',
+    '  }',
+    '  float X2 = X1, Y2 = Y1;',
+    '  if (uKV != 0.0) {',
+    '    float zv = 1.0 / (1.0 - abs(uKV)); float av = Y1 - 0.5;',
+    '    float szv = tw / (zv * (1.0 + uKV * (1.0 - 2.0 * av / th)));',
+    '    X2 = tw / 2.0 - szv / 2.0 + (X1 / tw) * szv; Y2 = th / 2.0 + (av - th / 2.0) / zv + 0.5;',
+    '  }',
+    '  outc = texture(uGeo, vec2(X2 / tw, Y2 / th));',
+    '}'].join('\n');
+  var GOUT = GHEAD + [
+    'uniform sampler2D uSrc; uniform int uDither;',
+    'void main() {',
+    '  ivec2 p = ivec2(gl_FragCoord.xy); vec4 c = texelFetch(uSrc, p, 0); vec3 col = clamp(c.rgb, 0.0, 1.0);',
+    '  if (uDither == 1) { float n = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453); col = clamp(col + (n - 0.5) / 255.0, 0.0, 1.0); }',
+    '  outc = vec4(col * c.a, c.a);',
+    '}'].join('\n');
+
+  function gpuShader(type, text) {
+    var s = gl.createShader(type); gl.shaderSource(s, text); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function gpuProgram(fs) {
+    var p = gl.createProgram(), u = {}, i, n, info;
+    gl.attachShader(p, gpuShader(gl.VERTEX_SHADER, GVS)); gl.attachShader(p, gpuShader(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    n = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (i = 0; i < n; i++) { info = gl.getActiveUniform(p, i); u[info.name.replace(/\[0\]$/, '')] = gl.getUniformLocation(p, info.name); }
+    return { p: p, u: u };
+  }
+  function gpuTex(linear) {
+    var t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+    var f = linear ? gl.LINEAR : gl.NEAREST;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, f); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, f);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    return t;
+  }
+  function initGPU() {
+    if (gpu.tried) return gpu.ok;
+    gpu.tried = true;
+    try {
+      var cv = document.createElement('canvas'); cv.width = cv.height = 16;
+      gl = cv.getContext('webgl2', { antialias: false, depth: false, stencil: false, alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false, powerPreference: 'high-performance' });
+      if (!gl) return false;
+      gpu.cv = cv;
+      var fl = gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float');
+      gpu.ifmt = fl ? gl.RGBA16F : gl.RGBA8; gpu.itype = fl ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+      gpu.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      var P = gpu.prog;
+      P.main = gpuProgram(GMAIN); P.blur = gpuProgram(GBLUR); P.noise = gpuProgram(GNOISE); P.unsharp = gpuProgram(GUNSHARP);
+      P.bilat = gpuProgram(GBILAT); P.p1 = gpuProgram(GP1); P.p2 = gpuProgram(GP2); P.fLocal = gpuProgram(GFLOCAL); P.fDetail = gpuProgram(GFDETAIL);
+      P.sharpL = gpuProgram(GSHARPL); P.warp = gpuProgram(GWARP); P.out = gpuProgram(GOUT);
+      gpu.src = gpuTex(false); gpu.geo = gpuTex(true); gpu.lut = gpuTex(false); gpu.mix = gpuTex(false); gpu.maskTex = gpuTex(false);
+      gl.bindTexture(gl.TEXTURE_2D, gpu.lut); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(256 * 4));
+      gl.bindTexture(gl.TEXTURE_2D, gpu.mix); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 360, 1, 0, gl.RGBA, gl.FLOAT, new Float32Array(360 * 4));
+      gl.bindTexture(gl.TEXTURE_2D, gpu.maskTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, 1, 1, 0, gl.RGBA, gl.FLOAT, new Float32Array(4));
+      cv.addEventListener('webglcontextlost', function (e) { e.preventDefault(); gpu.ok = false; schedule(); });
+      gpu.ok = true;
+    } catch (e) { gpu.ok = false; }
+    return gpu.ok;
+  }
+  /* four textures of the picture's size, used in turn as the output of each pass */
+  var GPOOL = 4;
+  function gpuSize(w, h) {
+    if (gpu.w === w && gpu.h === h) return;
+    var i, done = false;
+    while (!done) {
+      for (i = 0; i < GPOOL; i++) {
+        if (!gpu.tex[i]) { gpu.tex[i] = gpuTex(false); gpu.fbo[i] = gl.createFramebuffer(); }
+        gl.bindTexture(gl.TEXTURE_2D, gpu.tex[i]); gl.texImage2D(gl.TEXTURE_2D, 0, gpu.ifmt, w, h, 0, gl.RGBA, gpu.itype, null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, gpu.fbo[i]); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, gpu.tex[i], 0);
+      }
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE) done = true;
+      else if (gpu.ifmt !== gl.RGBA8) { gpu.ifmt = gl.RGBA8; gpu.itype = gl.UNSIGNED_BYTE; }
+      else throw new Error('framebuffer');
+    }
+    gpu.w = w; gpu.h = h;
+  }
+  function gpuPass(prog, out, w, h, setup) {
+    gl.useProgram(prog.p); gl.bindFramebuffer(gl.FRAMEBUFFER, out < 0 ? null : gpu.fbo[out]); gl.viewport(0, 0, w, h);
+    setup(prog.u); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+  function gpuBind(unit, tex, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); }
+  function gpuOthers(cur) { var o = [], i; for (i = 0; i < GPOOL && o.length < 2; i++) if (i !== cur) o.push(i); return o; }
+  function gpuBlur(from, to, w, h, R, dx, dy) {
+    gpuPass(gpu.prog.blur, to, w, h, function (u) { gpuBind(0, gpu.tex[from], u.uSrc); gl.uniform2i(u.uSize, w, h); gl.uniform2i(u.uDir, dx, dy); gl.uniform1i(u.uR, R); });
+  }
+  /* classic blur-based stage: horizontal blur, vertical blur, then combine with the picture */
+  function gpuStage(cur, w, h, R, comb, setComb) {
+    var o = gpuOthers(cur), a = o[0], b = o[1];
+    gpuBlur(cur, a, w, h, R, 1, 0); gpuBlur(a, b, w, h, R, 0, 1);
+    gpuPass(comb, a, w, h, function (u) { gpuBind(0, gpu.tex[cur], u.uCur); gpuBind(1, gpu.tex[b], u.uBlur); setComb(u); });
+    return a;
+  }
+  /* guided filter of the luminance of srcTex; the final program writes into texture dst (which may equal a) */
+  function gpuGuided(srcTex, flip, a, b, dst, w, h, R, eps, fin, setFin) {
+    gpuPass(gpu.prog.p1, a, w, h, function (u) { gpuBind(0, srcTex, u.uImg); gl.uniform2i(u.uSize, w, h); gl.uniform1i(u.uFlip, flip); });
+    gpuBlur(a, b, w, h, R, 1, 0); gpuBlur(b, a, w, h, R, 0, 1);
+    gpuPass(gpu.prog.p2, b, w, h, function (u) { gpuBind(0, gpu.tex[a], u.uM); gl.uniform1f(u.uEps, eps); });
+    gpuBlur(b, a, w, h, R, 1, 0); gpuBlur(a, b, w, h, R, 0, 1);
+    gpuPass(fin, dst, w, h, function (u) { gpuBind(0, srcTex, u.uImg); gl.uniform2i(u.uSize, w, h); gl.uniform1i(u.uFlip, flip); gpuBind(1, gpu.tex[b], u.uAB); if (setFin) setFin(u); });
+  }
+
+  /* weights of local masks do not depend on their adjustment sliders, so they are kept between frames */
+  var maskCache = [], curBaseKey = null;
+  function maskKey(m, w, h, geo) {
+    var o = {}, k; for (k in m) if (k !== 'adj') o[k] = m[k];
+    return JSON.stringify(o) + '|' + w + 'x' + h + '|' + geo.scale + '|' + geo.ox + '|' + geo.oy + '|' + curBaseKey;
+  }
+  function maskWeightsCached(m, w, h, geo, getD) {
+    if (!curBaseKey) return maskWeights(m, w, h, geo, getD());
+    var key = maskKey(m, w, h, geo), i;
+    for (i = 0; i < maskCache.length; i++) if (maskCache[i].key === key) return maskCache[i].val;
+    var val = maskWeights(m, w, h, geo, getD());
+    maskCache.push({ key: key, val: val }); if (maskCache.length > 8) maskCache.shift();
+    return val;
+  }
+  function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || (m.t === 'b' && m.auto); }
+
+  /* returns true when the GPU did the work (the picture in ctx is then fully edited), false to let the CPU do it */
+  function gpuRender(ctx, w, h, scale, upKey, warp, geo) {
+    if (!settings || settings.gpu === false || !initGPU() || !gpu.ok || w > gpu.maxTex || h > gpu.maxTex) return false;
+    var A = state.adj, fm = FILTERS[state.filter].m, i, enh = settings.enh !== false, P = gpu.prog;
+    var maskList = (state.masks || []).filter(function (m) { return m.adj.e || m.adj.c || m.adj.s || m.adj.t; });
+    if (maskList.length > 4) return false;
+    if (warp && maskList.some(needsPix)) return false; /* those masks read the picture's pixels, which the CPU does not have in this case */
+    var gain = Math.pow(2, A.exposure / 50 * (enh ? 2 : 1)) /* Enhanced works in linear light, where the same slider needs about twice the stops to feel as strong */, c = 1 + A.contrast / 100, hl = A.highlights / 100, sh = A.shadows / 100;
+    var temp = A.temp, tint = A.tint, vib = A.vibrance / 100, sat = 1 + A.saturation / 100, vig = A.vignette / 100, grainAmt = A.grain * 0.4, dz = A.dehaze / 100;
+    var doTone = hl !== 0 || sh !== 0, doWB = temp !== 0 || tint !== 0, doSat = vib !== 0 || sat !== 1;
+    var mixOn = state.mix.some(function (m) { return m[0] || m[1] || m[2]; });
+    var G = state.grade, gOn = G.sh[1] > 0 || G.mid[1] > 0 || G.hi[1] > 0;
+    var zs = zoneDelta(G.sh[0], G.sh[1]), zm = zoneDelta(G.mid[0], G.mid[1]), zh = zoneDelta(G.hi[0], G.hi[1]);
+    var luts = curveLuts();
+    var hasDetail = A.noise || A.sharpen || A.texture || A.clarity;
+    if (!warp && gain === 1 && c === 1 && !doTone && !doWB && !doSat && !fm && !vig && !luts && !mixOn && !gOn && !grainAmt && !dz && !hasDetail && !maskList.length) return true;
+    try {
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gpuSize(w, h);
+      var srcTex, flip;
+      if (warp) {
+        if (gpu.geoKey !== warp.key) {
+          gl.bindTexture(gl.TEXTURE_2D, gpu.geo); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, warp.cv); gpu.geoKey = warp.key;
+        }
+        gpuPass(P.warp, 3, w, h, function (u) {
+          gpuBind(0, gpu.geo, u.uGeo); gl.uniform2i(u.uOut, w, h); gl.uniform2i(u.uFull, warp.tw, warp.th); gl.uniform2i(u.uOff, warp.cx, warp.cy);
+          gl.uniform1f(u.uKV, warp.kv); gl.uniform1f(u.uKH, warp.kh);
+        });
+        srcTex = gpu.tex[3]; flip = 0;
+      } else {
+        if (!upKey || gpu.srcKey !== upKey) {
+          gl.bindTexture(gl.TEXTURE_2D, gpu.src); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, ctx.canvas); gpu.srcKey = upKey;
+        }
+        srcTex = gpu.src; flip = 1;
+      }
+      if (luts) {
+        var ld = new Uint8Array(256 * 4);
+        for (i = 0; i < 256; i++) { ld[i * 4] = luts[0][i]; ld[i * 4 + 1] = luts[1][i]; ld[i * 4 + 2] = luts[2][i]; ld[i * 4 + 3] = 255; }
+        gl.bindTexture(gl.TEXTURE_2D, gpu.lut); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 256, 1, gl.RGBA, gl.UNSIGNED_BYTE, ld);
+      }
+      if (mixOn) {
+        var mt = buildMixTable(state.mix), md = new Float32Array(360 * 4);
+        for (i = 0; i < 360; i++) { md[i * 4] = mt[i * 3]; md[i * 4 + 1] = mt[i * 3 + 1]; md[i * 4 + 2] = mt[i * 3 + 2]; }
+        gl.bindTexture(gl.TEXTURE_2D, gpu.mix); gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 360, 1, gl.RGBA, gl.FLOAT, md);
+      }
+      /* local masks: weights packed four to a texture, rebuilt only when a mask's shape (not its sliders) changes */
+      if (maskList.length) {
+        var mkey = curBaseKey ? maskList.map(function (m) { return maskKey(m, w, h, geo); }).join('#') + '|' + curBaseKey : null;
+        if (!mkey || gpu.maskKey !== mkey) {
+          var n = w * h, buf = gpu.maskBuf, dData = null;
+          if (!buf || buf.length !== n * 4) buf = gpu.maskBuf = new Float32Array(n * 4); else buf.fill(0);
+          maskList.forEach(function (m, k) {
+            var wts = maskWeightsCached(m, w, h, geo, function () { if (!needsPix(m)) return null; if (!dData) dData = ctx.getImageData(0, 0, w, h).data; return dData; });
+            for (var q = 0; q < n; q++) buf[q * 4 + k] = wts[q];
+          });
+          gl.bindTexture(gl.TEXTURE_2D, gpu.maskTex); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.FLOAT, buf);
+          gpu.maskKey = mkey;
+        }
+      }
+      function rad(base) { return Math.min(60, Math.max(1, Math.round(base * scale))); }
+      /* Enhanced: a smooth, edge-aware brightness map so Highlights and Shadows follow local light instead of single pixels */
+      var useLocal = enh && doTone;
+      if (useLocal) gpuGuided(srcTex, flip, 1, 2, 1, w, h, Math.max(2, Math.round(Math.max(w, h) * 0.03)), 0.02, P.fLocal, null);
+      gpuPass(P.main, 0, w, h, function (u) {
+        gpuBind(0, srcTex, u.uTex); gpuBind(1, gpu.mix, u.uMix); gpuBind(2, gpu.lut, u.uLut);
+        gpuBind(3, useLocal ? gpu.tex[1] : gpu.lut, u.uLocalL); gpuBind(4, gpu.maskTex, u.uMaskT);
+        gl.uniform2i(u.uSize, w, h); gl.uniform1i(u.uFlip, flip); gl.uniform1i(u.uEnh, enh ? 1 : 0); gl.uniform1i(u.uLocal, useLocal ? 1 : 0);
+        gl.uniform1f(u.uGain, gain); gl.uniform1f(u.uC, c); gl.uniform1f(u.uHl, hl); gl.uniform1f(u.uSh, sh); gl.uniform1f(u.uTemp, temp); gl.uniform1f(u.uTint, tint);
+        gl.uniform1f(u.uVib, vib); gl.uniform1f(u.uSat, sat); gl.uniform1f(u.uVig, vig); gl.uniform1f(u.uGrain, grainAmt); gl.uniform1f(u.uDz, dz);
+        gl.uniform1i(u.uTone, doTone ? 1 : 0); gl.uniform1i(u.uWB, doWB ? 1 : 0); gl.uniform1i(u.uSatOn, doSat ? 1 : 0); gl.uniform1i(u.uMixOn, mixOn ? 1 : 0);
+        gl.uniform1i(u.uGradeOn, gOn ? 1 : 0); gl.uniform1i(u.uLutOn, luts ? 1 : 0); gl.uniform1i(u.uFmOn, fm ? 1 : 0);
+        gl.uniform3f(u.uZs, zs[0], zs[1], zs[2]); gl.uniform3f(u.uZm, zm[0], zm[1], zm[2]); gl.uniform3f(u.uZh, zh[0], zh[1], zh[2]);
+        if (fm) { gl.uniform4f(u.uFR, fm[0], fm[1], fm[2], fm[4]); gl.uniform4f(u.uFG, fm[5], fm[6], fm[7], fm[9]); gl.uniform4f(u.uFB, fm[10], fm[11], fm[12], fm[14]); }
+        var me = [0, 0, 0, 0], mc = [0, 0, 0, 0], ms = [0, 0, 0, 0], mtt = [0, 0, 0, 0];
+        maskList.forEach(function (m, k) { me[k] = m.adj.e; mc[k] = m.adj.c; ms[k] = m.adj.s; mtt[k] = m.adj.t; });
+        gl.uniform1i(u.uMaskN, maskList.length);
+        gl.uniform4f(u.uME, me[0], me[1], me[2], me[3]); gl.uniform4f(u.uMC, mc[0], mc[1], mc[2], mc[3]);
+        gl.uniform4f(u.uMS, ms[0], ms[1], ms[2], ms[3]); gl.uniform4f(u.uMT, mtt[0], mtt[1], mtt[2], mtt[3]);
+      });
+      var cur = 0, o;
+      if (A.noise) {
+        if (enh) {
+          o = gpuOthers(cur);
+          gpuPass(P.bilat, o[0], w, h, function (u) { gpuBind(0, gpu.tex[cur], u.uSrc); gl.uniform2i(u.uSize, w, h); gl.uniform1i(u.uR, scale > 0.75 ? 3 : 2); gl.uniform1f(u.uA, A.noise / 100); });
+          cur = o[0];
+        } else cur = gpuStage(cur, w, h, rad(2), P.noise, function (u) { gl.uniform1f(u.uA, A.noise / 100); });
+      }
+      if (A.texture) {
+        if (enh) { o = gpuOthers(cur); gpuGuided(gpu.tex[cur], 0, o[0], o[1], o[0], w, h, rad(3), 0.0008, P.fDetail, function (u) { gl.uniform1f(u.uAmt, A.texture / 100 * 1.3); gl.uniform1i(u.uMid, 0); }); cur = o[0]; }
+        else cur = gpuStage(cur, w, h, rad(3), P.unsharp, function (u) { gl.uniform1f(u.uAmt, A.texture / 100 * 1.2); gl.uniform1i(u.uMid, 0); });
+      }
+      if (A.clarity) {
+        if (enh) { o = gpuOthers(cur); gpuGuided(gpu.tex[cur], 0, o[0], o[1], o[0], w, h, rad(14), 0.01, P.fDetail, function (u) { gl.uniform1f(u.uAmt, A.clarity / 100 * 1.1); gl.uniform1i(u.uMid, 1); }); cur = o[0]; }
+        else cur = gpuStage(cur, w, h, rad(14), P.unsharp, function (u) { gl.uniform1f(u.uAmt, A.clarity / 100 * 0.9); gl.uniform1i(u.uMid, 1); });
+      }
+      if (A.sharpen) {
+        cur = gpuStage(cur, w, h, rad(1), enh ? P.sharpL : P.unsharp, function (u) { gl.uniform1f(u.uAmt, A.sharpen / 100 * 1.6); if (!enh) gl.uniform1i(u.uMid, 0); });
+      }
+      if (gpu.cv.width !== w || gpu.cv.height !== h) { gpu.cv.width = w; gpu.cv.height = h; }
+      gpuPass(P.out, -1, w, h, function (u) { gpuBind(0, gpu.tex[cur], u.uSrc); gl.uniform1i(u.uDither, enh ? 1 : 0); });
+      ctx.save(); ctx.globalCompositeOperation = 'copy'; ctx.drawImage(gpu.cv, 0, 0); ctx.restore();
+      return true;
+    } catch (e) { gpu.ok = false; return false; }
+  }
+  function gpuUsable(a, b, c, d) { return !!(settings && settings.gpu !== false && initGPU() && gpu.ok && Math.max(a, b, c, d) <= gpu.maxTex); }
+
   /* ---------- drawing ---------- */
   var fullCv = document.createElement('canvas'), patchCv = document.createElement('canvas'), perspCv = document.createElement('canvas');
   function drawBase(ctx, w, h, scale, tx, ty, tw, th) {
@@ -706,8 +1175,23 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }
     ctx.scale(state.fx ? -1 : 1, state.fy ? -1 : 1);
     ctx.rotate(state.rot * Math.PI / 180);
-    ctx.drawImage(src, -w * scale / 2, -h * scale / 2, w * scale, h * scale);
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(srcFor(scale), -w * scale / 2, -h * scale / 2, w * scale, h * scale);
     ctx.restore();
+  }
+  /* shrinking a photo by a lot in one step loses fine detail, so big reductions go through half-size copies first */
+  function srcFor(scale) {
+    var lv = Math.floor(Math.log(1 / Math.max(scale, 0.01)) / Math.LN2 + 1e-6);
+    if (lv < 1) return src;
+    var mips = src.__mips || (src.__mips = []), k, prev, cv, g;
+    for (k = 1; k <= lv; k++) {
+      if (mips[k]) continue;
+      prev = k === 1 ? src : mips[k - 1];
+      cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(src.width / Math.pow(2, k))); cv.height = Math.max(1, Math.round(src.height / Math.pow(2, k)));
+      g = cv.getContext('2d'); g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high'; g.drawImage(prev, 0, 0, cv.width, cv.height);
+      mips[k] = cv;
+    }
+    return mips[lv];
   }
   /* heal / clone spots: copy a feathered round patch from the spot's source onto its target */
   function applySpots(ctx, tw, th, scale) {
@@ -727,7 +1211,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function applyPerspective(fg, tw, th) {
     var kv = (state.persV || 0) / 100 * 0.4, kh = (state.persH || 0) / 100 * 0.4, pg = perspCv.getContext('2d'), z, m, a, sz;
     if (kv) {
-      sz(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
+      fitCv(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
       z = 1 / (1 - Math.abs(kv)); fg.clearRect(0, 0, tw, th);
       for (a = 0; a < th; a++) {
         m = z * (1 + kv * (1 - 2 * a / th)); sz = tw / m;
@@ -735,7 +1219,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       }
     }
     if (kh) {
-      sz(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
+      fitCv(perspCv, tw, th); pg.drawImage(fullCv, 0, 0);
       z = 1 / (1 - Math.abs(kh)); fg.clearRect(0, 0, tw, th);
       for (a = 0; a < tw; a++) {
         m = z * (1 + kh * (1 - 2 * a / tw)); sz = th / m;
@@ -744,7 +1228,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }
   }
   /* resize a canvas only when needed (resizing reallocates it); otherwise just clear it */
-  function sz(cv, w, h) {
+  function fitCv(cv, w, h) {
     if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
     else cv.getContext('2d').clearRect(0, 0, w, h);
   }
@@ -760,22 +1244,33 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     return { tw: tw, th: th, cx: cx, cy: cy, cw: cw, ch: ch };
   }
   /* the cropped, rotated, straightened picture before any colour edits: kept while only colour sliders move */
-  var baseCv = document.createElement('canvas'), baseKey = '', srcSeq = 0;
+  var baseCv = document.createElement('canvas'), baseKey = '', fullKey = '', srcSeq = 0;
   function srcId() { return src.__zid || (src.__zid = ++srcSeq); }
   function draw(target, scale, plain, crop, cacheOK) {
     var w = src.width, h = src.height, D = dims(scale, crop);
     var tw = D.tw, th = D.th, cx = D.cx, cy = D.cy, cw = D.cw, ch = D.ch;
     var geo = { scale: scale, ox: cx - tw / 2, oy: cy - th / 2 };
     if (target === view) viewGeo = geo;
-    sz(target, cw, ch);
+    fitCv(target, cw, ch);
     var ctx = target.getContext('2d', { willReadFrequently: true });
     var usePersp = !!(state.persV || state.persH), useSpots = !!(state.spots && state.spots.length && !plain);
     var key = cacheOK ? [srcId(), w, h, scale, tw, th, cx, cy, cw, ch, state.rot, state.angle, state.fx, state.fy, state.persV, state.persH, useSpots ? JSON.stringify(state.spots) : ''].join('|') : '';
-    if (cacheOK && key === baseKey) {
+    var warpDone = false;
+    curBaseKey = cacheOK ? key : null;
+    if (usePersp && !useSpots && !plain && gpuUsable(tw, th, cw, ch)) { /* keystone on the GPU: the geometry canvas stays cached while the tilt sliders move */
+      var gkey = [srcId(), w, h, scale, tw, th, state.rot, state.angle, state.fx, state.fy].join('|');
+      if (fullKey !== gkey) { fitCv(fullCv, tw, th); drawBase(fullCv.getContext('2d', { willReadFrequently: true }), w, h, scale, tw / 2, th / 2, tw, th); fullKey = gkey; }
+      warpDone = gpuRender(ctx, cw, ch, scale, null, { cv: fullCv, key: gkey, tw: tw, th: th, cx: cx, cy: cy, kv: (state.persV || 0) / 100 * 0.4, kh: (state.persH || 0) / 100 * 0.4 }, geo);
+      if (!warpDone) fullKey = '';
+    }
+    if (warpDone) {
+      /* finished on the GPU */
+    } else if (cacheOK && key === baseKey) {
       ctx.drawImage(baseCv, 0, 0);
     } else {
       if (usePersp || useSpots) {
-        sz(fullCv, tw, th);
+        fullKey = '';
+        fitCv(fullCv, tw, th);
         var fg = fullCv.getContext('2d', { willReadFrequently: true });
         drawBase(fg, w, h, scale, tw / 2, th / 2, tw, th);
         if (usePersp) applyPerspective(fg, tw, th);
@@ -784,9 +1279,9 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       } else {
         drawBase(ctx, w, h, scale, tw / 2 - cx, th / 2 - cy, tw, th);
       }
-      if (cacheOK) { sz(baseCv, cw, ch); baseCv.getContext('2d').drawImage(target, 0, 0); baseKey = key; }
+      if (cacheOK) { fitCv(baseCv, cw, ch); baseCv.getContext('2d').drawImage(target, 0, 0); baseKey = key; }
     }
-    if (!plain) { process(ctx, cw, ch, geo); detail(ctx, cw, ch, scale); }
+    if (!plain && !warpDone && !gpuRender(ctx, cw, ch, scale, cacheOK ? key : null, null, geo)) { process(ctx, cw, ch, geo); detail(ctx, cw, ch, scale); }
   }
 
   /* while a slider is being dragged on a slower phone, draw a lighter preview and finish in full quality when the finger pauses */
@@ -1707,13 +2202,13 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function drawMaskOverlay() {
     var m = curMask(); if (!m) return;
     var w = view.width, h = view.height, k = scaleK(), g = vctx;
-    var rawD = null;
-    if (m.t === 's' || m.t === 'c' || m.t === 'y' || (m.t === 'b' && m.auto)) {
-      var rc = document.createElement('canvas'); draw(rc, viewGeo.scale, true);
-      rawD = rc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, rc.width, rc.height).data;
-      if (rc.width !== w || rc.height !== h) rawD = null;
-    }
-    var wt = maskWeights(m, w, h, viewGeo, rawD), tc = document.createElement('canvas'); tc.width = w; tc.height = h;
+    var geoNow = viewGeo; /* the overlay shares the weights the picture itself used, so dragging an adjustment slider does not rebuild them */
+    var wt = maskWeightsCached(m, w, h, geoNow, function () {
+      if (!(m.t === 's' || m.t === 'c' || m.t === 'y' || (m.t === 'b' && m.auto))) return null;
+      var rc = document.createElement('canvas'); draw(rc, geoNow.scale, true);
+      var d = rc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, rc.width, rc.height).data;
+      return (rc.width !== w || rc.height !== h) ? null : d;
+    }), tc = document.createElement('canvas'); tc.width = w; tc.height = h;
     var tg = tc.getContext('2d'), id = tg.createImageData(w, h), i;
     for (i = 0; i < wt.length; i++) { id.data[i * 4] = 255; id.data[i * 4 + 1] = 70; id.data[i * 4 + 2] = 70; id.data[i * 4 + 3] = wt[i] * 105; }
     tg.putImageData(id, 0, 0); g.drawImage(tc, 0, 0);
@@ -2102,10 +2597,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       return { left: l, top: t, right: rr, bottom: bb, width: rr - l, height: bb - t, x: l, y: t };
     };
   })();
-  var settings = { preview: 1200, imp: 2048, hist: true, rot: 0, dark: true }, settingsReady = false;
+  var settings = { preview: 1200, imp: 2048, hist: true, rot: 0, dark: true, gpu: true, enh: true }, settingsReady = false;
   function saveSettings() {
     if (!settingsReady) return;
-    store('picturez.settings', { preview: settings.preview, imp: settings.imp, hist: settings.hist, rot: settings.rot, dark: settings.dark, xsSize: xs.size, xsFmt: xs.fmt, xsQ: xs.q });
+    store('picturez.settings', { preview: settings.preview, imp: settings.imp, hist: settings.hist, rot: settings.rot, dark: settings.dark, gpu: settings.gpu, enh: settings.enh, xsSize: xs.size, xsFmt: xs.fmt, xsQ: xs.q });
   }
   function applySettings() {
     MAX_PREVIEW = settings.preview; MAX_SRC = settings.imp; $('hist').hidden = !settings.hist;
@@ -2121,6 +2616,8 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (st.imp) settings.imp = st.imp;
     if (typeof st.hist === 'boolean') settings.hist = st.hist;
     if (typeof st.dark === 'boolean') settings.dark = st.dark;
+    if (typeof st.gpu === 'boolean') settings.gpu = st.gpu;
+    if (typeof st.enh === 'boolean') settings.enh = st.enh;
     if (st.rot) settings.rot = st.rot;
     if (st.xsSize !== undefined) xs.size = st.xsSize;
     if (st.xsFmt) xs.fmt = st.xsFmt;
@@ -2138,6 +2635,9 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function syncSettingsUI() {
     chipRow($('set-preview'), [['Fast', 800], ['Balanced', 1200], ['High', 1600]], function (v) { return settings.preview === v; }, function (v) { settings.preview = v; applySettings(); saveSettings(); });
     chipRow($('set-import'), [['1600 px', 1600], ['2048 px', 2048], ['2560 px', 2560]], function (v) { return settings.imp === v; }, function (v) { settings.imp = v; applySettings(); saveSettings(); });
+    chipRow($('set-gpu'), [['On', true], ['Off', false]], function (v) { return (settings.gpu !== false) === v; }, function (v) { settings.gpu = v; applySettings(); saveSettings(); });
+    $('set-gpu-hint').textContent = initGPU() ? 'Graphics chip (faster editing)' : 'Graphics chip: not available on this phone, using the normal method';
+    chipRow($('set-enh'), [['Enhanced', true], ['Classic', false]], function (v) { return (settings.enh !== false) === v; }, function (v) { settings.enh = v; applySettings(); saveSettings(); });
     chipRow($('set-hist'), [['On', true], ['Off', false]], function (v) { return settings.hist === v; }, function (v) { settings.hist = v; applySettings(); saveSettings(); });
     chipRow($('set-dark'), [['On', true], ['Off', false]], function (v) { return settings.dark === v; }, function (v) { settings.dark = v; applySettings(); saveSettings(); });
     chipRow($('set-rot'), [['0\u00B0', 0], ['90\u00B0', 90], ['180\u00B0', 180], ['270\u00B0', 270]], function (v) { return (settings.rot || 0) === v; }, function (v) { settings.rot = v; applySettings(); saveSettings(); });
@@ -2150,7 +2650,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     userPresets = []; store('picturez.presets', userPresets); buildPresetList(); renderPresetThumbs(); flash('Saved looks cleared');
   });
   $('set-defaults').addEventListener('click', function () {
-    settings = { preview: 1200, imp: 2048, hist: true, rot: 0, dark: true }; xs.size = 0; xs.fmt = 'jpeg'; xs.q = 92;
+    settings = { preview: 1200, imp: 2048, hist: true, rot: 0, dark: true, gpu: true, enh: true }; xs.size = 0; xs.fmt = 'jpeg'; xs.q = 92;
     $('x-q').value = 92; $('x-q-out').textContent = '92'; syncExportUI(); applySettings(); saveSettings(); syncSettingsUI();
   });
   settingsReady = true; syncExportUI(); applySettings();
@@ -2200,6 +2700,196 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
 
 
   makeSample(); renderThumbs(); commit(); refreshRatios(); refreshCurveChips(); syncUI(); render();
+  /* ===== Front end: splash, home, drafts, Google sign-in ===== */
+  var GOOGLE_CLIENT_ID = '';   /* paste your Google Client ID between the quotes */
+  var user = readStore('picturez.user');
+  var idb = null, idbFail = false;
+  function dbOpen() {
+    return new Promise(function (res) {
+      if (idb) return res(idb);
+      try {
+        var r = indexedDB.open('picturez', 1);
+        r.onupgradeneeded = function () { r.result.createObjectStore('drafts', { keyPath: 'id' }); };
+        r.onsuccess = function () { idb = r.result; res(idb); };
+        r.onerror = r.onblocked = function () { idbFail = true; res(null); };
+      } catch (e) { idbFail = true; res(null); }
+    });
+  }
+  function dbDo(mode, fn) {
+    return dbOpen().then(function (db) {
+      if (!db) return null;
+      return new Promise(function (res) {
+        var tx = db.transaction('drafts', mode), st = tx.objectStore('drafts'), out = fn(st);
+        tx.oncomplete = function () { res(out && 'result' in out ? out.result : null); };
+        tx.onerror = tx.onabort = function () { res(null); };
+      });
+    });
+  }
+  function owner() { return user ? user.sub : 'guest'; }
+  function uid() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function blobOf(cv) { return new Promise(function (res) { cv.toBlob(function (b) { res(b); }, 'image/jpeg', 0.92); }); }
+  var saveT = 0, saving = false;
+  function scheduleDraft() { if (!docs[cur] || docs[cur].sample) return; clearTimeout(saveT); saveT = setTimeout(saveDraftNow, 900); }
+  function saveDraftNow() {
+    clearTimeout(saveT);
+    var d = docs[cur]; if (!d || d.sample || !src) return Promise.resolve();
+    if (d === docs[cur]) d.state = JSON.stringify(state);
+    var stateStr = d.state, hadId = !!d.draftId;
+    d.draftId = d.draftId || uid(); d.owner = d.owner || owner();
+    var thumb = '';
+    try { var cv = document.createElement('canvas'); cv.width = cv.height = 240; renderDocThumb(d, cv); thumb = cv.toDataURL('image/jpeg', 0.7); } catch (e) {}
+    var pb = d.photoBlob ? Promise.resolve(d.photoBlob) : blobOf(src).then(function (b) { d.photoBlob = b; return b; });
+    return pb.then(function (b) {
+      if (!b) return;
+      return dbDo('readwrite', function (st) { return st.put({ id: d.draftId, name: d.name, updated: Date.now(), owner: d.owner, photo: b, state: stateStr, thumb: thumb }); });
+    });
+  }
+  function listDrafts() {
+    return dbDo('readonly', function (st) { return st.getAll(); }).then(function (all) {
+      all = (all || []).filter(function (r) { return r.owner === owner(); });
+      all.sort(function (a, b) { return b.updated - a.updated; }); return all;
+    });
+  }
+  var homeBtn = document.createElement('button');
+  homeBtn.className = 'btn icon'; homeBtn.id = 'go-home'; homeBtn.type = 'button'; homeBtn.title = 'Home'; homeBtn.setAttribute('aria-label', 'Home');
+  homeBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg>';
+  $('open').parentNode.insertBefore(homeBtn, $('open'));
+  function show(id) {
+    ['home', 'drafts'].forEach(function (n) { $(n).hidden = n !== id; $(n).classList.remove('out'); });
+    if (id === 'home') refreshHome();
+  }
+  function hideScreens() { $('home').hidden = true; $('drafts').hidden = true; }
+  function refreshHome() {
+    listDrafts().then(function (l) { $('h-dc').textContent = l.length ? l.length + (l.length === 1 ? ' saved edit' : ' saved edits') : 'Saved edits'; });
+    paintAvatar($('avatar'));
+  }
+  function paintAvatar(el) {
+    el.innerHTML = '';
+    if (user) {
+      el.className = el.className.replace(' guest', '');
+      if (user.picture) { var im = document.createElement('img'); im.alt = ''; im.referrerPolicy = 'no-referrer'; im.src = user.picture; im.onerror = function () { el.removeChild(im); el.textContent = initial(); }; el.appendChild(im); }
+      else el.textContent = initial();
+    } else {
+      if (el.className.indexOf('guest') < 0) el.className += ' guest';
+      el.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>';
+    }
+  }
+  function initial() { return ((user && (user.name || user.email)) || '?').trim().charAt(0).toUpperCase(); }
+  function goHome() { saveDraftNow().then(function () { show('home'); }); }
+  homeBtn.addEventListener('click', goHome);
+  $('h-new').addEventListener('click', function () { picker.click(); });
+  $('h-drafts').addEventListener('click', function () { show('drafts'); renderDrafts(); });
+  $('d-back').addEventListener('click', function () { show(docs[cur] && !docs[cur].sample && false ? null : 'home'); });
+  function ago(t) {
+    var m = Math.round((Date.now() - t) / 60000);
+    if (m < 1) return 'just now'; if (m < 60) return m + ' min ago';
+    var h = Math.round(m / 60); if (h < 24) return h + ' h ago';
+    return new Date(t).toLocaleDateString();
+  }
+  function renderDrafts() {
+    var g = $('dgrid'); g.innerHTML = '<div class="dempty">Loading…</div>';
+    listDrafts().then(function (l) {
+      g.innerHTML = '';
+      if (!l.length) { g.innerHTML = '<div class="dempty">' + (idbFail ? 'This browser cannot save drafts here.' : 'No drafts yet.<br>Your edits are saved here automatically.') + '</div>'; return; }
+      l.forEach(function (r) {
+        var c = document.createElement('div'); c.className = 'dcard';
+        var b = document.createElement('button'); b.className = 'open'; b.type = 'button';
+        var im = document.createElement('img'); im.alt = ''; im.src = r.thumb || '';
+        var meta = document.createElement('div'); meta.className = 'meta';
+        var nm = document.createElement('b'); nm.textContent = r.name || 'Photo'; meta.appendChild(nm); meta.appendChild(document.createTextNode(ago(r.updated)));
+        b.appendChild(im); b.appendChild(meta); b.addEventListener('click', function () { openDraft(r); });
+        var x = document.createElement('button'); x.className = 'del'; x.type = 'button'; x.setAttribute('aria-label', 'Delete draft'); x.textContent = '×';
+        x.addEventListener('click', function () {
+          if (!confirm('Delete this draft?')) return;
+          dbDo('readwrite', function (st) { return st.delete(r.id); }).then(renderDrafts);
+        });
+        c.appendChild(b); c.appendChild(x); g.appendChild(c);
+      });
+    });
+  }
+  function openDraft(r) {
+    var have = -1; docs.forEach(function (d, i) { if (d.draftId === r.id) have = i; });
+    if (have >= 0) { activateDoc(have); hideScreens(); showTab('light'); return; }
+    loadImageCanvas(r.photo, MAX_SRC).then(function (cv) {
+      var d = newDoc(cv, r.name, false);
+      d.state = r.state; d.history = [r.state]; d.hIndex = 0; d.draftId = r.id; d.owner = r.owner; d.photoBlob = r.photo;
+      saveCurrentDoc();
+      if (docs.length === 1 && docs[0].sample) { docs = []; cur = -1; }
+      docs.push(d); activateDoc(docs.length - 1); showTab('light'); hideScreens();
+    }, function () { flash('That draft could not be opened'); });
+  }
+  /* after a photo is added from the picker, leave the home screen and start saving */
+  var _addPhotos = addPhotos;
+  addPhotos = function (files) {
+    var before = docs[cur], n = docs.length;
+    _addPhotos(files);
+    var t = setInterval(function () { if (docs.length > n || (docs[cur] && docs[cur] !== before && !docs[cur].sample)) { clearInterval(t); hideScreens(); scheduleDraft(); } }, 120);
+    setTimeout(function () { clearInterval(t); }, 20000);
+  };
+  var _activate = activateDoc;
+  activateDoc = function (i) { _activate(i); scheduleDraft(); };
+  document.addEventListener('visibilitychange', function () { if (document.hidden) saveDraftNow(); });
+  window.addEventListener('pagehide', function () { saveDraftNow(); });
+
+  /* ----- Google sign-in ----- */
+  function b64json(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
+    return JSON.parse(decodeURIComponent(atob(s).split('').map(function (c) { return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2); }).join('')));
+  }
+  function onCred(resp) {
+    try {
+      var p = b64json(resp.credential.split('.')[1]);
+      user = { sub: p.sub, name: p.name || '', email: p.email || '', picture: p.picture || '' };
+      store('picturez.user', user);
+      /* drafts made as a guest on this phone move to this account */
+      dbDo('readwrite', function (st) {
+        var rq = st.getAll();
+        rq.onsuccess = function () { rq.result.forEach(function (r) { if (r.owner === 'guest') { r.owner = user.sub; st.put(r); } }); };
+        return rq;
+      }).then(function () { docs.forEach(function (d) { if (d.owner === 'guest') d.owner = user.sub; }); closeAcct(); refreshHome(); if (!$('drafts').hidden) renderDrafts(); flash('Signed in'); });
+    } catch (e) { flash('Sign-in failed'); }
+  }
+  var gsiReady = false;
+  function loadGSI(cb) {
+    if (window.google && google.accounts && google.accounts.id) return cb();
+    var s = document.createElement('script'); s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = cb; s.onerror = function () { cb(true); }; document.head.appendChild(s);
+  }
+  function closeAcct() { $('acct').hidden = true; }
+  function openAcct() {
+    var c = $('acct-card'); c.innerHTML = ''; $('acct').hidden = false;
+    if (user) {
+      var w = document.createElement('div'); w.className = 'who';
+      var av = document.createElement('div'); av.className = 'avatar'; paintAvatar(av);
+      var tx = document.createElement('div'); tx.innerHTML = '<b></b><span></span>'; tx.firstChild.textContent = user.name || 'Signed in'; tx.lastChild.textContent = user.email;
+      w.appendChild(av); w.appendChild(tx); c.appendChild(w);
+      var so = document.createElement('button'); so.className = 'btn'; so.type = 'button'; so.textContent = 'Sign out';
+      so.addEventListener('click', function () {
+        try { if (window.google && google.accounts) google.accounts.id.disableAutoSelect(); } catch (e) {}
+        user = null; store('picturez.user', null); closeAcct(); refreshHome(); if (!$('drafts').hidden) renderDrafts();
+      });
+      c.appendChild(so);
+    } else if (!GOOGLE_CLIENT_ID) {
+      c.innerHTML = '<p><b>Google sign-in is not set up yet.</b></p><p>Drafts are saved on this phone. Add your Google Client ID in the app to turn sign-in on.</p>';
+    } else {
+      c.innerHTML = '<p>Sign in to keep your drafts with your Google account on this phone.</p><div id="gbtn"></div>';
+      loadGSI(function (err) {
+        if (err || !window.google) { $('gbtn').textContent = 'Could not reach Google. Check your connection.'; return; }
+        if (!gsiReady) { google.accounts.id.initialize({ client_id: GOOGLE_CLIENT_ID, callback: onCred }); gsiReady = true; }
+        google.accounts.id.renderButton($('gbtn'), { theme: 'outline', size: 'large', shape: 'pill', text: 'continue_with' });
+      });
+    }
+  }
+  $('avatar').addEventListener('click', openAcct);
+  $('acct').addEventListener('click', function (e) { if (e.target === $('acct')) closeAcct(); });
+
+  /* ----- start: splash, then home ----- */
+  paintAvatar($('avatar'));
+  setTimeout(function () {
+    show('home');
+    $('splash').classList.add('out');
+    setTimeout(function () { $('splash').hidden = true; }, 400);
+  }, 1700);
 })();
 </script>
 
