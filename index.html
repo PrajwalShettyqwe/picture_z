@@ -270,8 +270,9 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   <div class="hmid">
     <label class="hbtn main" id="h-new" for="picker" role="button" tabindex="0" style="display:block;text-align:center;box-sizing:border-box">New edit<small>Choose a photo to start</small></label>
     <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
+    <label for="picker2" id="h-files" role="button" tabindex="0" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:8px">Photo picker not opening? Choose from Files</label>
   </div>
-  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 6</div>
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 8</div>
 </div>
 <div class="scr" id="drafts" hidden>
   <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
@@ -314,6 +315,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       <button class="tab" role="tab" aria-selected="false" data-tab="filters">Filters</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="presets">Presets</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="local">Local</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="layers">Layers</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="heal">Heal</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="crop">Crop</button>
       <button class="tab" role="tab" aria-selected="false" data-tab="transform">Rotate</button>
@@ -380,6 +382,17 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       </div>
       <div class="chips" id="mask-chips"></div>
       <div id="mask-rows"></div>
+    </div>
+    <div class="pane" id="p-layers" hidden>
+      <p class="hint" style="margin:0 0 6px">Put a cut-out on this photo. First open another photo, use Local, then Tap to select on its subject. Then add it here.</p>
+      <div class="chips" id="ly-src"></div>
+      <div class="btnrow" style="margin-top:6px">
+        <button class="btn sm" id="ly-file" type="button">+ From PNG file</button>
+        <button class="btn sm" id="ly-flip" type="button" disabled>Flip</button>
+        <button class="btn sm" id="ly-del" type="button" disabled>Delete</button>
+      </div>
+      <div class="chips" id="ly-chips"></div>
+      <div id="ly-rows"></div>
     </div>
     <div class="pane" id="p-heal" hidden>
       <div class="chips" id="heal-modes"></div>
@@ -1287,6 +1300,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       if (cacheOK) { fitCv(baseCv, cw, ch); baseCv.getContext('2d').drawImage(target, 0, 0); baseKey = key; }
     }
     if (!plain && !warpDone && !gpuRender(ctx, cw, ch, scale, cacheOK ? key : null, null, geo)) { process(ctx, cw, ch, geo); detail(ctx, cw, ch, scale); }
+    if (!plain && !skipLayers && state.layers && state.layers.length) compositeLayers(ctx, scale, geo);
   }
 
   /* while a slider is being dragged on a slower phone, draw a lighter preview and finish in full quality when the finger pauses */
@@ -1307,10 +1321,12 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       vctx.clearRect(0, 0, D.cw, D.ch);
       vctx.drawImage(lowCv, 0, 0, lowCv.width, lowCv.height, 0, 0, D.cw, D.ch);
       updateHist();
+      if (activeTab === 'layers' && !showOriginal) drawLayerOverlay();
     } else {
       draw(view, s, showOriginal, null, true);
       updateHist();
       if (activeTab === 'local' && !showOriginal) drawMaskOverlay();
+      else if (activeTab === 'layers' && !showOriginal) drawLayerOverlay();
       else if (activeTab === 'heal') drawHealOverlay();
       lastFullMs = performance.now() - t0;
     }
@@ -2017,6 +2033,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       if (m.p1) m.p1 = xf(m.p1, op);
       if (m.c) m.c = xf(m.c, op);
     });
+    (state.layers || []).forEach(function (L) {
+      var p = xf([L.x, L.y], op); L.x = p[0]; L.y = p[1];
+      if (op === 'rr') L.rot += 90; else if (op === 'rl') L.rot -= 90;
+      else if (op === 'fh') { L.fl = L.fl ? 0 : 1; L.rot = -L.rot; } else { L.fl = L.fl ? 0 : 1; L.rot = 180 - L.rot; }
+    });
     (state.spots || []).forEach(function (sp) {
       var a = xf([sp.x, sp.y], op), o = xf([sp.ox, sp.oy], op);
       sp.x = a[0]; sp.y = a[1]; sp.ox = o[0]; sp.oy = o[1];
@@ -2204,6 +2225,171 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var a = document.createElement('a'); a.href = url; a.download = 'picturez-cutout.png'; document.body.appendChild(a); a.click(); a.remove();
     flash('Cut-out saved to Downloads');
   }
+
+  /* ---------- layers: a cut-out placed on top of the photo ---------- */
+  var layerStore = {}, layerCache = {}, layerSel = -1, skipLayers = false;
+  function lyrs() { if (!state.layers) state.layers = []; return state.layers; }
+  function curLayer() { return lyrs()[layerSel] || null; }
+  function layerPrepared(L, pxW, tint) {
+    var img = layerStore[L.id]; if (!img) return null;
+    var pw = Math.max(8, Math.min(img.width, Math.round(pxW))), ph = Math.max(2, Math.round(pw * img.height / img.width));
+    var blur = (L.ft || 0) / 100 * 0.04 * pw, pad = Math.ceil(blur * 2) + 1;
+    var tr = tint ? Math.round(tint[0] / 16) : -1, tg = tint ? Math.round(tint[1] / 16) : -1, tb = tint ? Math.round(tint[2] / 16) : -1;
+    var key = L.id + '|' + pw + '|' + Math.round(blur * 10) + '|' + (L.blend || 0) + '|' + tr + '|' + tg + '|' + tb;
+    if (layerCache[key]) return layerCache[key];
+    var cv = document.createElement('canvas'); cv.width = pw + pad * 2; cv.height = ph + pad * 2;
+    var g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(img, pad, pad, pw, ph);
+    if (blur >= 0.5) {
+      var b = document.createElement('canvas'); b.width = cv.width; b.height = cv.height;
+      var bg = b.getContext('2d'); bg.filter = 'blur(' + blur.toFixed(2) + 'px)'; bg.drawImage(cv, 0, 0);
+      g.globalCompositeOperation = 'destination-in'; g.drawImage(b, 0, 0);
+    }
+    if (tint && L.blend > 0) {
+      g.globalCompositeOperation = 'source-atop'; g.fillStyle = 'rgba(' + Math.round(tint[0]) + ',' + Math.round(tint[1]) + ',' + Math.round(tint[2]) + ',' + (L.blend / 100 * 0.5).toFixed(3) + ')';
+      g.fillRect(0, 0, cv.width, cv.height);
+    }
+    var keys = Object.keys(layerCache); if (keys.length > 24) delete layerCache[keys[0]];
+    return (layerCache[key] = { cv: cv, pad: pad, pw: pw });
+  }
+  function compositeLayers(ctx, scale, geo) {
+    var ls = state.layers, tint = null, i;
+    if (ls.some(function (L) { return L.blend > 0; })) {
+      var tc = document.createElement('canvas'); tc.width = tc.height = 16;
+      var tg = tc.getContext('2d', { willReadFrequently: true }); tg.drawImage(ctx.canvas, 0, 0, 16, 16);
+      var td = tg.getImageData(0, 0, 16, 16).data, r = 0, g = 0, b = 0;
+      for (i = 0; i < td.length; i += 4) { r += td[i]; g += td[i + 1]; b += td[i + 2]; }
+      tint = [r / 256, g / 256, b / 256];
+    }
+    ls.forEach(function (L) {
+      var img = layerStore[L.id]; if (!img) return;
+      var widthPx = L.w * scale, P = layerPrepared(L, widthPx, tint); if (!P) return;
+      var k = widthPx / P.pw;
+      ctx.save();
+      ctx.translate(L.x * scale - geo.ox, L.y * scale - geo.oy); ctx.rotate(L.rot * Math.PI / 180); ctx.scale(L.fl ? -1 : 1, 1);
+      ctx.globalAlpha = Math.max(0, Math.min(1, L.op / 100)); ctx.imageSmoothingQuality = 'high';
+      if (L.sh > 0) { ctx.shadowColor = 'rgba(0,0,0,' + (0.55 * L.sh / 100).toFixed(3) + ')'; ctx.shadowBlur = 2 + 0.03 * widthPx * L.sh / 100; ctx.shadowOffsetY = 0.012 * widthPx * L.sh / 100; }
+      ctx.drawImage(P.cv, -P.cv.width * k / 2, -P.cv.height * k / 2, P.cv.width * k, P.cv.height * k);
+      ctx.restore();
+    });
+  }
+  function drawLayerOverlay() {
+    var L = curLayer(); if (!L || !layerStore[L.id]) return;
+    var img = layerStore[L.id], g = vctx, k = scaleK(), w = L.w * viewGeo.scale, h = w * img.height / img.width;
+    g.save(); g.translate(L.x * viewGeo.scale - viewGeo.ox, L.y * viewGeo.scale - viewGeo.oy); g.rotate(L.rot * Math.PI / 180);
+    g.lineWidth = 2 * k; g.strokeStyle = '#fff'; g.setLineDash([6 * k, 5 * k]); g.strokeRect(-w / 2, -h / 2, w, h);
+    g.setLineDash([]); g.fillStyle = '#ff7a3d';
+    [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (c) { g.beginPath(); g.arc(c[0] * w / 2, c[1] * h / 2, 7 * k, 0, Math.PI * 2); g.fill(); g.stroke(); });
+    g.restore();
+  }
+  function cutoutCanvasFor(d, maxEdge) { /* the Tap to select area(s) of a photo, on transparent, trimmed to the subject */
+    var prev = skipLayers; skipLayers = true;
+    try {
+      return withDoc(d, function () {
+        var ms = (state.masks || []).filter(function (m) { return m.t === 'o' && m.seeds && m.seeds.length; });
+        if (!ms.length) return null;
+        var f = fullDims(), cr = state.crop, longEdge = Math.max(f.w * cr.w, f.h * cr.h), sc = Math.min(1, maxEdge / longEdge);
+        var off = document.createElement('canvas'), pl = document.createElement('canvas');
+        draw(off, sc, false); draw(pl, sc, true);
+        var D = dims(sc), geo = { scale: sc, ox: D.cx - D.tw / 2, oy: D.cy - D.th / 2 }, w = off.width, h = off.height;
+        var pd = pl.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, pl.width, pl.height).data, wt = new Float32Array(w * h), i;
+        ms.forEach(function (m) { var mm = {}; for (var k in m) mm[k] = m[k]; mm.inv = false; var a = maskWeights(mm, w, h, geo, pd); for (i = 0; i < a.length; i++) if (a[i] > wt[i]) wt[i] = a[i]; });
+        var g = off.getContext('2d', { willReadFrequently: true }), id = g.getImageData(0, 0, w, h), x, y, x0 = w, x1 = -1, y0 = h, y1 = -1;
+        for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+          var a2 = wt[y * w + x]; id.data[(y * w + x) * 4 + 3] = Math.round(a2 * 255);
+          if (a2 > 0.05) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+        }
+        if (x1 < 0) return null;
+        g.putImageData(id, 0, 0);
+        var bw = x1 - x0 + 1, bh = y1 - y0 + 1, out = document.createElement('canvas'); out.width = bw; out.height = bh;
+        out.getContext('2d').drawImage(off, x0, y0, bw, bh, 0, 0, bw, bh);
+        return out;
+      });
+    } finally { skipLayers = prev; }
+  }
+  function newLayer(cv, name) {
+    var id = 'l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), f = fullDims();
+    layerStore[id] = cv;
+    var w = Math.min(f.w * 0.45, f.h * 0.6 * cv.width / cv.height);
+    lyrs().push({ id: id, name: name || 'Cut-out', x: 0, y: 0, w: w, rot: 0, fl: 0, op: 100, ft: 25, blend: 25, sh: 0 });
+    layerSel = lyrs().length - 1; syncLayers(); schedule(); commit();
+  }
+  function addLayerFromDoc(i) {
+    var cv = cutoutCanvasFor(docs[i], 1600);
+    if (!cv) { flash('Use Local, then Tap to select on that photo first'); return; }
+    newLayer(cv, docs[i].name);
+  }
+  var lyPicker = document.createElement('input'); lyPicker.type = 'file'; lyPicker.accept = 'image/*'; lyPicker.hidden = true; document.body.appendChild(lyPicker);
+  lyPicker.addEventListener('change', function () {
+    var f = lyPicker.files && lyPicker.files[0]; lyPicker.value = ''; if (!f) return;
+    loadImageCanvas(f, 1600).then(function (cv) { newLayer(cv, f.name); }, function () { flash('That file could not be opened'); });
+  });
+  $('ly-file').addEventListener('click', function () { lyPicker.click(); });
+  $('ly-del').addEventListener('click', function () { var L = curLayer(); if (!L) return; lyrs().splice(layerSel, 1); layerSel = lyrs().length - 1; syncLayers(); schedule(); commit(); });
+  $('ly-flip').addEventListener('click', function () { var L = curLayer(); if (!L) return; L.fl = L.fl ? 0 : 1; schedule(); commit(); });
+  var lrows = {};
+  function lyRow(key, label, min, max, get, set) {
+    var r = makeRow($('ly-rows'), label, min, max, function (v) { var L = curLayer(); if (L) { set(L, v); schedule(); } }, commit);
+    r.get = get; return r;
+  }
+  lrows.size = lyRow('size', 'Size', 3, 200, null, function (L, v) { L.w = fullDims().w * v / 100; });
+  lrows.rot = lyRow('rot', 'Rotate', -180, 180, null, function (L, v) { L.rot = v; });
+  lrows.op = lyRow('op', 'Opacity', 0, 100, null, function (L, v) { L.op = v; });
+  lrows.ft = lyRow('ft', 'Edge softness', 0, 100, null, function (L, v) { L.ft = v; });
+  lrows.blend = lyRow('blend', 'Blend in', 0, 100, null, function (L, v) { L.blend = v; });
+  lrows.sh = lyRow('sh', 'Shadow', 0, 100, null, function (L, v) { L.sh = v; });
+  function syncLayers() {
+    var src2 = $('ly-src'), box = $('ly-chips'), L = curLayer();
+    src2.innerHTML = ''; box.innerHTML = '';
+    docs.forEach(function (d, i) {
+      if (i === cur || d.sample) return;
+      var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = '+ ' + (d.name || 'Photo').slice(0, 18);
+      b.style.setProperty('--c', '#ff7a3d'); b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () { addLayerFromDoc(i); });
+      src2.appendChild(b);
+    });
+    if (!src2.firstChild) { var n = document.createElement('p'); n.className = 'hint'; n.style.margin = '0'; n.textContent = 'No other photos yet. Add one with the photo icon at the top.'; src2.appendChild(n); }
+    lyrs().forEach(function (l, i) {
+      var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = 'Layer ' + (i + 1);
+      b.style.setProperty('--c', '#5a8dff'); b.setAttribute('aria-pressed', String(i === layerSel));
+      b.addEventListener('click', function () { layerSel = i; syncLayers(); schedule(); });
+      box.appendChild(b);
+    });
+    $('ly-del').disabled = $('ly-flip').disabled = !L; $('ly-rows').hidden = !L;
+    if (!L) return;
+    lrows.size.set(L.w / fullDims().w * 100); lrows.rot.set(Math.round(((L.rot + 180) % 360 + 360) % 360 - 180));
+    lrows.op.set(L.op); lrows.ft.set(L.ft); lrows.blend.set(L.blend); lrows.sh.set(L.sh);
+  }
+  var lyPtrs = {}, lyG = null, lyMoved = false;
+  function lyStart() {
+    var L = curLayer(), ids = Object.keys(lyPtrs); if (!L || !ids.length) { lyG = null; return; }
+    if (ids.length === 1) { var p = lyPtrs[ids[0]]; lyG = { m: 'move', sx: p.x, sy: p.y, x0: L.x, y0: L.y }; }
+    else { var a = lyPtrs[ids[0]], b = lyPtrs[ids[1]]; lyG = { m: 'pinch', d0: Math.max(10, Math.hypot(a.x - b.x, a.y - b.y)), a0: Math.atan2(b.y - a.y, b.x - a.x), w0: L.w, r0: L.rot }; }
+  }
+  view.addEventListener('pointerdown', function (e) {
+    if (activeTab !== 'layers' || !curLayer()) return;
+    e.preventDefault(); try { view.setPointerCapture(e.pointerId); } catch (err) {}
+    lyPtrs[e.pointerId] = { x: e.clientX, y: e.clientY }; lyStart();
+  });
+  view.addEventListener('pointermove', function (e) {
+    if (!lyPtrs[e.pointerId] || activeTab !== 'layers') return;
+    lyPtrs[e.pointerId] = { x: e.clientX, y: e.clientY };
+    var L = curLayer(); if (!L || !lyG) return;
+    var ids = Object.keys(lyPtrs), r = view.getBoundingClientRect(), k = view.width / r.width;
+    if (lyG.m === 'move' && ids.length === 1) {
+      L.x = lyG.x0 + (e.clientX - lyG.sx) * k / viewGeo.scale; L.y = lyG.y0 + (e.clientY - lyG.sy) * k / viewGeo.scale;
+    } else if (lyG.m === 'pinch' && ids.length >= 2) {
+      var a = lyPtrs[ids[0]], b = lyPtrs[ids[1]];
+      L.w = Math.max(8, lyG.w0 * Math.hypot(a.x - b.x, a.y - b.y) / lyG.d0); L.rot = lyG.r0 + (Math.atan2(b.y - a.y, b.x - a.x) - lyG.a0) * 180 / Math.PI;
+      lrows.size.set(L.w / fullDims().w * 100); lrows.rot.set(Math.round(((L.rot + 180) % 360 + 360) % 360 - 180));
+    }
+    lyMoved = true; schedule();
+  });
+  function lyUp(e) {
+    if (!lyPtrs[e.pointerId]) return;
+    delete lyPtrs[e.pointerId];
+    if (Object.keys(lyPtrs).length) { lyStart(); } else { lyG = null; if (lyMoved) { lyMoved = false; commit(); } }
+  }
+  view.addEventListener('pointerup', lyUp); view.addEventListener('pointercancel', lyUp);
   function toXY(p) { return [(p.px + viewGeo.ox) / viewGeo.scale, (p.py + viewGeo.oy) / viewGeo.scale]; }
   function toCv(X, Y) { return [X * viewGeo.scale - viewGeo.ox, Y * viewGeo.scale - viewGeo.oy]; }
   function canvasPt(e) { var r = view.getBoundingClientRect(); return { px: (e.clientX - r.left) * view.width / r.width, py: (e.clientY - r.top) * view.height / r.height }; }
@@ -2439,8 +2625,8 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     saveCurrentDoc(); cur = i;
     var d = docs[i];
     src = d.canvas; state = JSON.parse(d.state); history = d.history; hIndex = d.hIndex;
-    maskSel = -1; cloneSrc = null; cloneOfs = null; lDrag = null; hDrag = null;
-    cropAr = 0; refreshRatios(); renderThumbs(); syncUI(); updateHistoryButtons(); render(); renderLibrary();
+    maskSel = -1; layerSel = -1; cloneSrc = null; cloneOfs = null; lDrag = null; hDrag = null;
+    cropAr = 0; refreshRatios(); renderThumbs(); syncUI(); if (activeTab === 'layers') syncLayers(); updateHistoryButtons(); render(); renderLibrary();
   }
   function withDoc(d, fn) {
     var sSrc = src, sState = state;
@@ -2564,11 +2750,12 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     });
     var prevTab = activeTab;
     activeTab = name;
-    view.classList.toggle('drawing', name === 'local' || name === 'heal');
+    view.classList.toggle('drawing', name === 'local' || name === 'heal' || name === 'layers');
+    if (name === 'layers') syncLayers();
     if (name === 'local') { syncLocal(); }
     if (name === 'heal') { syncHeal(); flash(healMode === 'clone' ? 'Tap to set the source, then paint' : 'Paint over what you want to remove'); }
     if (name === 'library') renderLibrary();
-    if (name === 'local' || name === 'heal' || prevTab === 'local' || prevTab === 'heal') schedule(); /* the picture itself is unchanged by switching tools */
+    if (name === 'local' || name === 'heal' || name === 'layers' || prevTab === 'local' || prevTab === 'heal' || prevTab === 'layers') schedule(); /* the picture itself is unchanged by switching tools */
     if (name === 'curve') { sizeCurve(); drawCurve(); }
     if (name === 'crop' && !cropMode) startCrop();
   }
@@ -2669,6 +2856,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     else if (t === 'filters') { state.filter = 'none'; zero(['vignette', 'grain']); }
     else if (t === 'presets') LOOK_KEYS.forEach(function (k) { state[k] = f[k]; });
     else if (t === 'local') { state.masks = []; maskSel = -1; }
+    else if (t === 'layers') { state.layers = []; layerSel = -1; }
     else if (t === 'heal') { state.spots = []; cloneSrc = null; cloneOfs = null; }
     else if (t === 'crop') { $('crop-reset').click(); return; }
     else if (t === 'transform') {
@@ -2842,9 +3030,16 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var thumb = '';
     try { var cv = document.createElement('canvas'); cv.width = cv.height = 240; renderDocThumb(d, cv); thumb = cv.toDataURL('image/jpeg', 0.7); } catch (e) {}
     var pb = d.photoBlob ? Promise.resolve(d.photoBlob) : blobOf(src).then(function (b) { d.photoBlob = b; return b; });
-    return pb.then(function (b) {
+    var lids = []; try { lids = (JSON.parse(stateStr).layers || []).map(function (l) { return l.id; }); } catch (e) {}
+    d.layerBlobs = d.layerBlobs || {};
+    var lp = lids.map(function (id) {
+      if (d.layerBlobs[id] || !layerStore[id]) return Promise.resolve();
+      return new Promise(function (res) { layerStore[id].toBlob(function (bb) { d.layerBlobs[id] = bb; res(); }, 'image/png'); });
+    });
+    return Promise.all(lp).then(function () { return pb; }).then(function (b) {
       if (!b) return;
-      return dbDo('readwrite', function (st) { return st.put({ id: d.draftId, name: d.name, updated: Date.now(), owner: d.owner, photo: b, state: stateStr, thumb: thumb }); });
+      var lay = {}; lids.forEach(function (id) { if (d.layerBlobs[id]) lay[id] = d.layerBlobs[id]; });
+      return dbDo('readwrite', function (st) { return st.put({ id: d.draftId, name: d.name, updated: Date.now(), owner: d.owner, photo: b, state: stateStr, thumb: thumb, layers: lay }); });
     });
   }
   function listDrafts() {
@@ -2880,6 +3075,14 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function initial() { return ((user && (user.name || user.email)) || '?').trim().charAt(0).toUpperCase(); }
   function goHome() { saveDraftNow().then(function () { show('home'); }); }
   homeBtn.addEventListener('click', goHome);
+  var picker2 = document.createElement('input');
+  picker2.type = 'file'; picker2.multiple = true; picker2.id = 'picker2'; picker2.hidden = true; /* no type filter, so the phone's Files app opens instead of the photo picker */
+  document.body.appendChild(picker2);
+  picker2.addEventListener('change', function () {
+    var files = Array.prototype.slice.call(picker2.files || []).filter(function (f) { return !f.type || f.type.indexOf('image/') === 0; }); picker2.value = '';
+    if (!files.length) { flash('Choose a JPG, PNG or WebP photo'); return; }
+    addPhotos(files);
+  });
   $('h-new').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picker.click(); } });
   $('h-drafts').addEventListener('click', function () { show('drafts'); renderDrafts(); });
   $('d-back').addEventListener('click', function () { show(docs[cur] && !docs[cur].sample && false ? null : 'home'); });
@@ -2913,8 +3116,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function openDraft(r) {
     var have = -1; docs.forEach(function (d, i) { if (d.draftId === r.id) have = i; });
     if (have >= 0) { activateDoc(have); hideScreens(); showTab('light'); return; }
-    loadImageCanvas(r.photo, MAX_SRC).then(function (cv) {
-      var d = newDoc(cv, r.name, false);
+    var lay = r.layers || {}, lkeys = Object.keys(lay);
+    Promise.all(lkeys.map(function (id) { return layerStore[id] ? null : loadImageCanvas(lay[id], 2048).then(function (c) { layerStore[id] = c; }, function () {}); }))
+    .then(function () { return loadImageCanvas(r.photo, MAX_SRC); }).then(function (cv) {
+      var d = newDoc(cv, r.name, false); d.layerBlobs = lay;
       d.state = r.state; d.history = [r.state]; d.hIndex = 0; d.draftId = r.id; d.owner = r.owner; d.photoBlob = r.photo;
       saveCurrentDoc();
       if (docs.length === 1 && docs[0].sample) { docs = []; cur = -1; }
