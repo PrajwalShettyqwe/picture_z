@@ -268,10 +268,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
 <div class="scr" id="home" hidden>
   <div class="htop"><div class="brand">Picture <b>Z</b></div><button class="avatar guest" id="avatar" type="button" aria-label="Account"></button></div>
   <div class="hmid">
-    <button class="hbtn main" id="h-new" type="button">New edit<small>Choose a photo to start</small></button>
+    <label class="hbtn main" id="h-new" for="picker" role="button" tabindex="0" style="display:block;text-align:center;box-sizing:border-box">New edit<small>Choose a photo to start</small></label>
     <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
   </div>
-  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 4</div>
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 6</div>
 </div>
 <div class="scr" id="drafts" hidden>
   <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
@@ -376,6 +376,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
         <button class="btn sm" id="add-sky" type="button">+ Sky</button>
         <button class="btn sm" id="add-color" type="button">+ Color range</button>
         <button class="btn sm" id="add-luma" type="button">+ Brightness range</button>
+        <button class="btn sm" id="add-subject" type="button">+ Tap to select</button>
       </div>
       <div class="chips" id="mask-chips"></div>
       <div id="mask-rows"></div>
@@ -1059,7 +1060,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     maskCache.push({ key: key, val: val }); if (maskCache.length > 8) maskCache.shift();
     return val;
   }
-  function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || (m.t === 'b' && m.auto); }
+  function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || (m.t === 'b' && m.auto); }
 
   /* returns true when the GPU did the work (the picture in ctx is then fully edited), false to let the CPU do it */
   function gpuRender(ctx, w, h, scale, upKey, warp, geo) {
@@ -2044,8 +2045,70 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }
     return [r / n, g / n, b / n];
   }
+  function subjectWeights(m, w, h, geo, d) { /* tap to select: grows a region from each tapped point, stopping at colour changes and edges */
+    var out = new Float32Array(w * h), i, x, y;
+    if (!d || !m.seeds || !m.seeds.length) return out;
+    var gs = Math.min(1, 256 / Math.max(w, h)), gw = Math.max(2, Math.round(w * gs)), gh = Math.max(2, Math.round(h * gs)), gn = gw * gh;
+    var g = new Float32Array(gn * 3), cnt = new Float32Array(gn);
+    for (y = 0; y < h; y++) {
+      var gy = Math.min(gh - 1, (y * gh / h) | 0);
+      for (x = 0; x < w; x++) {
+        var gx = Math.min(gw - 1, (x * gw / w) | 0), o = (y * w + x) * 4, k = gy * gw + gx;
+        g[k * 3] += d[o]; g[k * 3 + 1] += d[o + 1]; g[k * 3 + 2] += d[o + 2]; cnt[k]++;
+      }
+    }
+    for (i = 0; i < gn; i++) { var c = cnt[i] || 1; g[i * 3] /= c; g[i * 3 + 1] /= c; g[i * 3 + 2] /= c; }
+    var tol = 0.03 + (m.tol || 35) / 100 * 0.3, step = tol * 0.45, mask = new Uint8Array(gn), seen = new Uint8Array(gn), stack = new Int32Array(gn);
+    function dist(a, r, gg, b) { var dr = g[a * 3] - r, dg = g[a * 3 + 1] - gg, db = g[a * 3 + 2] - b; return Math.sqrt(dr * dr + dg * dg + db * db) / 441; }
+    var sumR = 0, sumG = 0, sumB = 0, sumN = 0;
+    m.seeds.forEach(function (sd) {
+      var sx = Math.round((sd[0] * geo.scale - geo.ox) * gw / w), sy = Math.round((sd[1] * geo.scale - geo.oy) * gh / h);
+      if (sx < 0 || sy < 0 || sx >= gw || sy >= gh) return;
+      var s0 = sy * gw + sx; if (mask[s0]) return;
+      var r0 = 0, g0 = 0, b0 = 0, n0 = 0, ddx, ddy;
+      for (ddy = -1; ddy <= 1; ddy++) for (ddx = -1; ddx <= 1; ddx++) {
+        var qx = Math.min(gw - 1, Math.max(0, sx + ddx)), qy = Math.min(gh - 1, Math.max(0, sy + ddy)), q = qy * gw + qx;
+        r0 += g[q * 3]; g0 += g[q * 3 + 1]; b0 += g[q * 3 + 2]; n0++;
+      }
+      var mr = r0 / n0, mg = g0 / n0, mb = b0 / n0, sr = mr, sg = mg, sb = mb, sn = 1, sp = 0;
+      var seen2 = new Uint8Array(gn); stack[sp++] = s0; seen2[s0] = 1; mask[s0] = 1;
+      while (sp) {
+        var p = stack[--sp], px = p % gw, py = (p / gw) | 0, nb = [px > 0 ? p - 1 : -1, px < gw - 1 ? p + 1 : -1, py > 0 ? p - gw : -1, py < gh - 1 ? p + gw : -1], j;
+        for (j = 0; j < 4; j++) {
+          var n = nb[j]; if (n < 0 || seen2[n] || mask[n]) continue; seen2[n] = 1;
+          if (dist(n, sr / sn, sg / sn, sb / sn) > tol) continue;
+          if (dist(n, g[p * 3], g[p * 3 + 1], g[p * 3 + 2]) > step) continue;
+          mask[n] = 1; stack[sp++] = n; sr += g[n * 3]; sg += g[n * 3 + 1]; sb += g[n * 3 + 2]; sn++;
+        }
+      }
+      sumR += sr; sumG += sg; sumB += sb; sumN += sn;
+    });
+    var mc = [sumR / Math.max(1, sumN), sumG / Math.max(1, sumN), sumB / Math.max(1, sumN)];
+    var f = new Float32Array(gn); for (i = 0; i < gn; i++) f[i] = mask[i];
+    var br = Math.max(1, Math.round(Math.max(gw, gh) * 0.012));
+    f = boxBlurF(boxBlurF(f, gw, gh, br), gw, gh, br);
+    for (i = 0; i < gn; i++) f[i] = smooth((f[i] - 0.3) / 0.4);
+    for (y = 0; y < h; y++) {
+      var fy = (y + 0.5) * gh / h - 0.5, y0 = Math.max(0, Math.min(gh - 1, Math.floor(fy))), y1 = Math.min(gh - 1, y0 + 1), ty = Math.max(0, fy - y0);
+      for (x = 0; x < w; x++) {
+        var fx = (x + 0.5) * gw / w - 0.5, x0 = Math.max(0, Math.min(gw - 1, Math.floor(fx))), x1 = Math.min(gw - 1, x0 + 1), tx = Math.max(0, fx - x0);
+        out[y * w + x] = (f[y0 * gw + x0] * (1 - tx) + f[y0 * gw + x1] * tx) * (1 - ty) + (f[y1 * gw + x0] * (1 - tx) + f[y1 * gw + x1] * tx) * ty;
+      }
+    }
+    /* near the border, pixels that are clearly a different colour from the selected area drop out, so the edge follows the real outline */
+    for (i = 0; i < w * h; i++) {
+      var v = out[i]; if (v <= 0.01 || v >= 0.98) continue;
+      var q2 = i * 4, dr2 = d[q2] - mc[0], dg2 = d[q2 + 1] - mc[1], db2 = d[q2 + 2] - mc[2], dd = Math.sqrt(dr2 * dr2 + dg2 * dg2 + db2 * db2) / 441;
+      out[i] = v * (1 - smooth((dd - tol * 1.1) / (tol * 0.6 + 0.001)));
+    }
+    var fr = Math.round((m.feather || 0) / 100 * 0.02 * Math.max(w, h));
+    if (fr >= 1) out = boxBlurF(out, w, h, fr);
+    if (m.inv) for (i = 0; i < out.length; i++) out[i] = 1 - out[i];
+    return out;
+  }
   function maskWeights(m, w, h, geo, d) {
     var out = new Float32Array(w * h), x, y, i = 0, sc = geo.scale;
+    if (m.t === 'o') return subjectWeights(m, w, h, geo, d);
     if (m.t === 's' || m.t === 'c' || m.t === 'y') {
       if (!d) return out;
       var fd = fullDims(), n = w * h, f = m.feather / 100;
@@ -2125,11 +2188,27 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (m.inv) for (i = 0; i < out.length; i++) out[i] = 1 - out[i];
     return out;
   }
+  function saveCutout(m) { /* the selected area on a transparent background, as a PNG */
+    var d = docs[cur]; if (!d) return;
+    var url = withDoc(d, function () {
+      var f = fullDims(), cr = state.crop, longEdge = Math.max(f.w * cr.w, f.h * cr.h), sc = Math.min(1, 2048 / longEdge);
+      var off = document.createElement('canvas'), pl = document.createElement('canvas');
+      draw(off, sc, false); draw(pl, sc, true);
+      var D = dims(sc), geo = { scale: sc, ox: D.cx - D.tw / 2, oy: D.cy - D.th / 2 };
+      var pd = pl.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, pl.width, pl.height).data;
+      var wt = maskWeights(m, off.width, off.height, geo, pd), g = off.getContext('2d', { willReadFrequently: true }), id = g.getImageData(0, 0, off.width, off.height), i;
+      for (i = 0; i < wt.length; i++) id.data[i * 4 + 3] = Math.round(wt[i] * 255);
+      g.putImageData(id, 0, 0);
+      return off.toDataURL('image/png');
+    });
+    var a = document.createElement('a'); a.href = url; a.download = 'picturez-cutout.png'; document.body.appendChild(a); a.click(); a.remove();
+    flash('Cut-out saved to Downloads');
+  }
   function toXY(p) { return [(p.px + viewGeo.ox) / viewGeo.scale, (p.py + viewGeo.oy) / viewGeo.scale]; }
   function toCv(X, Y) { return [X * viewGeo.scale - viewGeo.ox, Y * viewGeo.scale - viewGeo.oy]; }
   function canvasPt(e) { var r = view.getBoundingClientRect(); return { px: (e.clientX - r.left) * view.width / r.width, py: (e.clientY - r.top) * view.height / r.height }; }
 
-  var maskSel = -1, lDrag = null, MASKNAMES = { b: 'Brush', l: 'Linear', r: 'Radial', s: 'Sky', c: 'Color', y: 'Luma' };
+  var maskSel = -1, lDrag = null, MASKNAMES = { b: 'Brush', l: 'Linear', r: 'Radial', s: 'Sky', c: 'Color', y: 'Luma', o: 'Subject' };
   function curMask() { return state.masks[maskSel] || null; }
   function addMask(t) {
     var d = fullDims(), m = { t: t, inv: false, feather: 70, adj: { e: 0, c: 0, s: 0, t: 0 } };
@@ -2139,9 +2218,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (t === 's') { m.feather = 40; m.adj.e = -30; m.adj.s = 20; }
     if (t === 'c') { m.col = [128, 128, 128]; m.tol = 30; m.feather = 40; m.adj.s = 30; }
     if (t === 'y') { m.lo = 60; m.hi = 100; m.feather = 40; m.adj.e = -30; }
+    if (t === 'o') { m.seeds = []; m.tol = 35; m.feather = 30; m.adj.e = 25; }
     state.masks.push(m); maskSel = state.masks.length - 1;
     syncLocal(); schedule(); commit();
-    flash(t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
+    flash(t === 'o' ? 'Tap the subject on the photo' : t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
   }
   $('add-brush').addEventListener('click', function () { addMask('b'); });
   $('add-linear').addEventListener('click', function () { addMask('l'); });
@@ -2149,6 +2229,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   $('add-sky').addEventListener('click', function () { addMask('s'); });
   $('add-color').addEventListener('click', function () { addMask('c'); });
   $('add-luma').addEventListener('click', function () { addMask('y'); });
+  $('add-subject').addEventListener('click', function () { addMask('o'); });
   $('mask-del').addEventListener('click', function () {
     if (!curMask()) return;
     state.masks.splice(maskSel, 1); maskSel = state.masks.length - 1; syncLocal(); schedule(); commit();
@@ -2169,11 +2250,17 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   mrows.e = adjRow('e', 'Exposure'); mrows.c = adjRow('c', 'Contrast'); mrows.s = adjRow('s', 'Saturation'); mrows.t = adjRow('t', 'Temperature');
   mrows.size = makeRow($('mask-rows'), 'Size', 3, 100, function (v) { var m = curMask(); if (m) { if (m.t === 'b') m.size = v; else m.rad = v / 100 * mdim() * 0.5; schedule(); } }, commit);
   mrows.feather = makeRow($('mask-rows'), 'Feather', 0, 100, function (v) { var m = curMask(); if (m) { m.feather = v; schedule(); } }, commit);
-  mrows.p1 = makeRow($('mask-rows'), 'Range', 1, 100, function (v) { var m = curMask(); if (!m) return; if (m.t === 'c') m.tol = v; else if (m.t === 'y') m.lo = Math.min(v, m.hi - 1); schedule(); }, commit);
+  mrows.p1 = makeRow($('mask-rows'), 'Range', 1, 100, function (v) { var m = curMask(); if (!m) return; if (m.t === 'c' || m.t === 'o') m.tol = v; else if (m.t === 'y') m.lo = Math.min(v, m.hi - 1); schedule(); }, commit);
   mrows.p2 = makeRow($('mask-rows'), 'Max', 1, 100, function (v) { var m = curMask(); if (m && m.t === 'y') { m.hi = Math.max(v, m.lo + 1); schedule(); } }, commit);
   var autoBtn = document.createElement('button'); autoBtn.className = 'btn sm'; autoBtn.type = 'button'; autoBtn.style.cssText = 'margin:4px 6px 0 0';
   autoBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'b') { m.auto = !m.auto; syncLocal(); schedule(); commit(); } });
   $('mask-rows').appendChild(autoBtn);
+  var seedBtn = document.createElement('button'); seedBtn.className = 'btn sm'; seedBtn.type = 'button'; seedBtn.textContent = 'Undo last tap'; seedBtn.style.cssText = 'margin:4px 6px 0 0';
+  seedBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'o' && m.seeds.length) { m.seeds.pop(); schedule(); commit(); } });
+  $('mask-rows').appendChild(seedBtn);
+  var cutBtn = document.createElement('button'); cutBtn.className = 'btn sm'; cutBtn.type = 'button'; cutBtn.textContent = 'Save cut-out (PNG)'; cutBtn.style.cssText = 'margin:4px 6px 0 0';
+  cutBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'o') saveCutout(m); });
+  $('mask-rows').appendChild(cutBtn);
   var invBtn = document.createElement('button'); invBtn.className = 'btn sm'; invBtn.type = 'button'; invBtn.textContent = 'Invert mask';
   invBtn.style.marginTop = '4px';
   invBtn.addEventListener('click', function () { var m = curMask(); if (m) { m.inv = !m.inv; syncLocal(); schedule(); commit(); } });
@@ -2194,11 +2281,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (!m) return;
     ['e', 'c', 's', 't'].forEach(function (k) { mrows[k].set(m.adj[k]); });
     mrows.size.row.hidden = !(m.t === 'b' || m.t === 'r'); mrows.feather.row.hidden = m.t === 'l';
-    mrows.p1.row.hidden = !(m.t === 'c' || m.t === 'y'); mrows.p2.row.hidden = m.t !== 'y';
+    mrows.p1.row.hidden = !(m.t === 'c' || m.t === 'y' || m.t === 'o'); mrows.p2.row.hidden = m.t !== 'y';
     mrows.p1.row.querySelector('label').textContent = m.t === 'y' ? 'Min' : 'Range';
     mrows.p2.row.querySelector('label').textContent = 'Max';
-    if (m.t === 'c') mrows.p1.set(m.tol); if (m.t === 'y') { mrows.p1.set(m.lo); mrows.p2.set(m.hi); }
-    autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
+    if (m.t === 'c' || m.t === 'o') mrows.p1.set(m.tol); if (m.t === 'y') { mrows.p1.set(m.lo); mrows.p2.set(m.hi); }
+    seedBtn.hidden = cutBtn.hidden = m.t !== 'o'; autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
     if (m.t === 'b') mrows.size.set(m.size); else if (m.t === 'r') mrows.size.set(m.rad / (mdim() * 0.5) * 100);
     mrows.feather.set(m.feather);
     invBtn.textContent = m.inv ? 'Mask inverted' : 'Invert mask';
@@ -2208,7 +2295,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var w = view.width, h = view.height, k = scaleK(), g = vctx;
     var geoNow = viewGeo; /* the overlay shares the weights the picture itself used, so dragging an adjustment slider does not rebuild them */
     var wt = maskWeightsCached(m, w, h, geoNow, function () {
-      if (!(m.t === 's' || m.t === 'c' || m.t === 'y' || (m.t === 'b' && m.auto))) return null;
+      if (!(m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || (m.t === 'b' && m.auto))) return null;
       var rc = document.createElement('canvas'); draw(rc, geoNow.scale, true);
       var d = rc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, rc.width, rc.height).data;
       return (rc.width !== w || rc.height !== h) ? null : d;
@@ -2225,6 +2312,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       var c = toCv(m.c[0], m.c[1]);
       g.beginPath(); g.arc(c[0], c[1], m.rad * viewGeo.scale, 0, Math.PI * 2); g.stroke(); handle(m.c[0], m.c[1]); handle(m.c[0] + m.rad, m.c[1]);
     }
+    else if (m.t === 'o') { m.seeds.forEach(function (sd) { var p = toCv(sd[0], sd[1]); g.beginPath(); g.arc(p[0], p[1], 6 * k, 0, Math.PI * 2); g.fill(); g.stroke(); }); }
     g.restore();
   }
   view.addEventListener('pointerdown', function (e) {
@@ -2233,6 +2321,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     e.preventDefault(); try { view.setPointerCapture(e.pointerId); } catch (err) {}
     var p = toXY(canvasPt(e)), tol = 40 * scaleK() / viewGeo.scale;
     if (m.t === 's' || m.t === 'y') return;
+    if (m.t === 'o') { m.seeds.push(p); lDrag = { mode: 'seed' }; flash('Added. Tap more areas, or change Range'); schedule(); return; }
     if (m.t === 'c') {
       var pc = document.createElement('canvas'); draw(pc, viewGeo.scale, true);
       var cp = canvasPt(e), pd = pc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, pc.width, pc.height).data;
@@ -2254,7 +2343,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var p = toXY(canvasPt(e));
     if (lDrag.mode === 'paint') { if (Math.hypot(p[0] - lDrag.last[0], p[1] - lDrag.last[1]) > m.size * mdim() / 200 * 0.25) { m.pts.push(p); lDrag.last = p; } }
     else if (lDrag.mode === 'p0' || lDrag.mode === 'p1') m[lDrag.mode] = p;
-    else if (lDrag.mode === 'pick') { return; }
+    else if (lDrag.mode === 'pick' || lDrag.mode === 'seed') { return; }
     else if (lDrag.mode === 'rad') { m.rad = Math.max(8, Math.hypot(p[0] - m.c[0], p[1] - m.c[1])); mrows.size.set(m.rad / (mdim() * 0.5) * 100); }
     else m.c = p;
     schedule();
@@ -2791,7 +2880,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function initial() { return ((user && (user.name || user.email)) || '?').trim().charAt(0).toUpperCase(); }
   function goHome() { saveDraftNow().then(function () { show('home'); }); }
   homeBtn.addEventListener('click', goHome);
-  $('h-new').addEventListener('click', function () { picker.click(); });
+  $('h-new').addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picker.click(); } });
   $('h-drafts').addEventListener('click', function () { show('drafts'); renderDrafts(); });
   $('d-back').addEventListener('click', function () { show(docs[cur] && !docs[cur].sample && false ? null : 'home'); });
   function ago(t) {
