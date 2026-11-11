@@ -18,8 +18,8 @@
   --line: #2d313b;
   --fg: #eceef2;
   --muted: #9aa1ae;
-  --accent: #ff7a3d;
-  --accent-ink: #1a0d05;
+  --accent: #f2f2f2;
+  --accent-ink: #111318;
   --font-display: "Syne", "Trebuchet MS", sans-serif;
   --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: dark;
@@ -99,11 +99,12 @@ canvas.ruler { display: block; width: 100%; height: 44px; margin-top: 2px; touch
   --c: #eceef2; height: 30px; padding: 0 11px; border-radius: 999px; border: 1.5px solid var(--c);
   background: var(--bg); color: var(--c); font-weight: 600; font-size: 13px; line-height: 1;
 }
-.chch[aria-pressed="true"] { background: var(--c); color: #111318; }
+.chch[aria-pressed="true"] { background: var(--c); color: var(--accent-ink); }
+#mixchips .chch[aria-pressed="true"] { color: #111318; }
 #mixchips .chch:not([aria-pressed="true"]) { border-color: var(--line); color: #9aa1ae; }
 #p-heal .chch, #grade-tabs .chch { background: none; border: 0; border-radius: 0; padding: 0 10px; color: var(--muted); }
 #p-heal .chch[aria-pressed="true"], #grade-tabs .chch[aria-pressed="true"] { background: none; color: var(--fg); text-decoration: underline; text-underline-offset: 7px; }
-html[data-theme="light"] { --bg: #f3f4f7; --surface: #ffffff; --line: #d3d7e0; --fg: #14161b; --muted: #5d6472; color-scheme: light; }
+html[data-theme="light"] { --bg: #f3f4f7; --surface: #ffffff; --line: #d3d7e0; --fg: #14161b; --muted: #5d6472; --accent: #14161b; --accent-ink: #ffffff; color-scheme: light; }
 html[data-theme="light"] .chch { --c: #14161b; }
 html[data-theme="light"] .stage { background: conic-gradient(#e4e7ed 25%, #eceff3 0 50%, #e4e7ed 0 75%, #eceff3 0) 0 0 / 24px 24px; }
 html[data-theme="light"] .pill { background: rgba(255,255,255,.94); }
@@ -272,7 +273,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
     <label for="picker2" id="h-files" role="button" tabindex="0" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:8px">Photo picker not opening? Choose from Files</label>
   </div>
-  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 10</div>
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 12</div>
 </div>
 <div class="scr" id="drafts" hidden>
   <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
@@ -1072,7 +1073,9 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var key = maskKey(m, w, h, geo), i;
     for (i = 0; i < maskCache.length; i++) if (maskCache[i].key === key) return maskCache[i].val;
     var val = maskWeights(m, w, h, geo, getD());
-    maskCache.push({ key: key, val: val }); if (maskCache.length > 8) maskCache.shift();
+    maskCache.push({ key: key, val: val });
+    var bytes = 0; maskCache.forEach(function (e) { bytes += e.val.length * 4; });
+    while (maskCache.length > 1 && (bytes > 48e6 || maskCache.length > 16)) { bytes -= maskCache[0].val.length * 4; maskCache.shift(); } /* keep up to about 48 MB so switching between masks stays quick */
     return val;
   }
   function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || m.t === 'g' || (m.t === 'b' && m.auto); }
@@ -1324,8 +1327,19 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       vctx.drawImage(lowCv, 0, 0, lowCv.width, lowCv.height, 0, 0, D.cw, D.ch);
       updateHist();
       if (activeTab === 'layers' && !showOriginal) drawLayerOverlay();
+    } else if (overlayOnly && frameCv && frameSig === s + '|' + showOriginal + '|' + cur && frameCv.width === view.width && frameCv.height === view.height) {
+      overlayOnly = false;
+      vctx.clearRect(0, 0, view.width, view.height);
+      vctx.drawImage(frameCv, 0, 0);
+      if (activeTab === 'local' && !showOriginal) drawMaskOverlay();
+      else if (activeTab === 'layers' && !showOriginal) drawLayerOverlay();
+      else if (activeTab === 'heal') drawHealOverlay();
     } else {
+      overlayOnly = false;
       draw(view, s, showOriginal, null, true);
+      if (!frameCv) frameCv = document.createElement('canvas');
+      if (frameCv.width !== view.width || frameCv.height !== view.height) { frameCv.width = view.width; frameCv.height = view.height; }
+      frameCv.getContext('2d').clearRect(0, 0, view.width, view.height); frameCv.getContext('2d').drawImage(view, 0, 0); frameSig = s + '|' + showOriginal + '|' + cur;
       updateHist();
       if (activeTab === 'local' && !showOriginal) drawMaskOverlay();
       else if (activeTab === 'layers' && !showOriginal) drawLayerOverlay();
@@ -1334,7 +1348,13 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }
     lastEnd = performance.now();
   }
+  var overlayOnly = false, frameCv = null, frameSig = '';
+  function scheduleOverlay() { /* only the overlay changes, so the finished picture can be reused */
+    if (queued) { schedule(); return; }
+    schedule(); overlayOnly = true;
+  }
   function schedule() {
+    overlayOnly = false;
     /* a drag keeps calling this either right after the last call or right after the last draw finished */
     var now = performance.now(), burst = now - Math.max(lastSched, lastEnd) < 120;
     lastSched = now;
@@ -1367,7 +1387,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       vctx.moveTo(x, y + h * i / 3); vctx.lineTo(x + w, y + h * i / 3);
     }
     vctx.stroke();
-    vctx.strokeStyle = '#ff7a3d'; vctx.lineWidth = 4 * k; vctx.lineCap = 'square';
+    vctx.strokeStyle = '#ffffff'; vctx.lineWidth = 4 * k; vctx.lineCap = 'square';
     var a = Math.min(22 * k, w / 3, h / 3);
     vctx.beginPath();
     vctx.moveTo(x, y + a); vctx.lineTo(x, y); vctx.lineTo(x + a, y);
@@ -1572,7 +1592,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
         g.fillStyle = 'rgba(' + tickRGB + ',' + a + ')';
         g.fillRect(Math.round(x - dpr / 2), H * (0.5 - th / 2), Math.max(1, Math.round(1.6 * dpr)), H * th);
       }
-      g.fillStyle = v ? '#ff7a3d' : (light ? '#14161b' : '#ffffff');
+      g.fillStyle = v ? (light ? '#14161b' : '#ffffff') : (light ? '#14161b' : '#ffffff');
       g.fillRect(Math.round(cx - dpr), H * 0.18, Math.round(2 * dpr), H * 0.64);
     }
     function refresh() {
@@ -1925,7 +1945,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   });
   var gTabs = $('grade-tabs'), gW = $('wheels');
   WHEELS.forEach(function (w, i) {
-    var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = w[1]; b.style.setProperty('--c', '#ff7a3d');
+    var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = w[1]; b.style.setProperty('--c', 'var(--accent)');
     b.addEventListener('click', function () { gW.scrollTo({ left: i * gW.clientWidth, behavior: 'smooth' }); });
     gTabs.appendChild(b);
   });
@@ -2462,7 +2482,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var img = layerStore[L.id], g = vctx, k = scaleK(), w = L.w * viewGeo.scale, h = w * img.height / img.width;
     g.save(); g.translate(L.x * viewGeo.scale - viewGeo.ox, L.y * viewGeo.scale - viewGeo.oy); g.rotate(L.rot * Math.PI / 180);
     g.lineWidth = 2 * k; g.strokeStyle = '#fff'; g.setLineDash([6 * k, 5 * k]); g.strokeRect(-w / 2, -h / 2, w, h);
-    g.setLineDash([]); g.fillStyle = '#ff7a3d';
+    g.setLineDash([]); g.fillStyle = '#ffffff'; g.strokeStyle = '#14161b';
     [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(function (c) { g.beginPath(); g.arc(c[0] * w / 2, c[1] * h / 2, 7 * k, 0, Math.PI * 2); g.fill(); g.stroke(); });
     g.restore();
   }
@@ -2528,7 +2548,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     docs.forEach(function (d, i) {
       if (i === cur || d.sample) return;
       var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = '+ ' + (d.name || 'Photo').slice(0, 18);
-      b.style.setProperty('--c', '#ff7a3d'); b.setAttribute('aria-pressed', 'false');
+      b.style.setProperty('--c', 'var(--accent)'); b.setAttribute('aria-pressed', 'false');
       b.addEventListener('click', function () { addLayerFromDoc(i); });
       src2.appendChild(b);
     });
@@ -2637,7 +2657,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   $('mask-rows').appendChild(cutBtn);
   var modeF = document.createElement('button'), modeB = document.createElement('button');
   [modeF, modeB].forEach(function (b, n) { b.className = 'btn sm'; b.type = 'button'; b.textContent = n ? 'Mark background' : 'Mark subject'; b.style.cssText = 'margin:4px 6px 0 0'; $('mask-rows').appendChild(b); });
-  function paintModes(m) { modeF.style.outline = m && m.mode !== 'b' ? '2px solid #39b36a' : 'none'; modeB.style.outline = m && m.mode === 'b' ? '2px solid #e5534b' : 'none'; }
+  function paintModes(m) { modeF.style.outline = m && m.mode !== 'b' ? '2px solid var(--fg)' : 'none'; modeB.style.outline = m && m.mode === 'b' ? '2px dashed var(--fg)' : 'none'; }
   modeF.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'f'; paintModes(m); } });
   modeB.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'b'; paintModes(m); } });
   var invBtn = document.createElement('button'); invBtn.className = 'btn sm'; invBtn.type = 'button'; invBtn.textContent = 'Invert mask';
@@ -2650,8 +2670,8 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (maskSel >= state.masks.length) maskSel = state.masks.length - 1;
     state.masks.forEach(function (m, i) {
       var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = MASKNAMES[m.t] + ' ' + (i + 1);
-      b.style.setProperty('--c', '#ff7a3d'); b.setAttribute('aria-pressed', String(i === maskSel));
-      b.addEventListener('click', function () { maskSel = i; syncLocal(); schedule(); });
+      b.style.setProperty('--c', 'var(--accent)'); b.setAttribute('aria-pressed', String(i === maskSel));
+      b.addEventListener('click', function () { maskSel = i; syncLocal(); scheduleOverlay(); });
       box.appendChild(b);
     });
     var m = curMask();
@@ -2682,7 +2702,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var tg = tc.getContext('2d'), id = tg.createImageData(w, h), i;
     for (i = 0; i < wt.length; i++) { id.data[i * 4] = 255; id.data[i * 4 + 1] = 70; id.data[i * 4 + 2] = 70; id.data[i * 4 + 3] = wt[i] * 105; }
     tg.putImageData(id, 0, 0); g.drawImage(tc, 0, 0);
-    g.save(); g.lineWidth = 2 * k; g.strokeStyle = '#fff'; g.fillStyle = '#ff7a3d';
+    g.save(); g.lineWidth = 2 * k; g.strokeStyle = '#14161b'; g.fillStyle = '#ffffff';
     function handle(X, Y) { var p = toCv(X, Y); g.beginPath(); g.arc(p[0], p[1], 9 * k, 0, Math.PI * 2); g.fill(); g.stroke(); }
     if (m.t === 'l') {
       var a = toCv(m.p0[0], m.p0[1]), b = toCv(m.p1[0], m.p1[1]);
@@ -2729,7 +2749,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (lDrag.mode === 'paint') { if (Math.hypot(p[0] - lDrag.last[0], p[1] - lDrag.last[1]) > m.size * mdim() / 200 * 0.25) { m.pts.push(p); lDrag.last = p; } }
     else if (lDrag.mode === 'p0' || lDrag.mode === 'p1') m[lDrag.mode] = p;
     else if (lDrag.mode === 'pick' || lDrag.mode === 'seed') { return; }
-    else if (lDrag.mode === 'stroke') { var lp = lDrag.pts[lDrag.pts.length - 1]; if (Math.hypot(p[0] - lp[0], p[1] - lp[1]) > mdim() * 0.004) lDrag.pts.push(p); }
+    else if (lDrag.mode === 'stroke') { var lp = lDrag.pts[lDrag.pts.length - 1]; if (Math.hypot(p[0] - lp[0], p[1] - lp[1]) > mdim() * 0.004) lDrag.pts.push(p); scheduleOverlay(); return; }
     else if (lDrag.mode === 'rad') { m.rad = Math.max(8, Math.hypot(p[0] - m.c[0], p[1] - m.c[1])); mrows.size.set(m.rad / (mdim() * 0.5) * 100); }
     else m.c = p;
     schedule();
@@ -2742,7 +2762,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   var healBox = $('heal-modes');
   [['heal', 'Heal'], ['clone', 'Clone']].forEach(function (m) {
     var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = m[1]; b.dataset.k = m[0];
-    b.style.setProperty('--c', '#ff7a3d');
+    b.style.setProperty('--c', 'var(--accent)');
     b.addEventListener('click', function () { healMode = m[0]; syncHeal(); schedule(); flash(healMode === 'clone' ? 'Tap to set the source, then paint' : 'Paint over what you want to remove'); });
     healBox.appendChild(b);
   });
@@ -2894,7 +2914,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     });
     var fl = $('lib-filter'); fl.innerHTML = '';
     [['All', 'all'], ['Picks', 'picks'], ['4★+', 'four']].concat(albumList.map(function (a) { return [a, a]; })).forEach(function (f) {
-      var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = f[0]; b.style.setProperty('--c', '#ff7a3d');
+      var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = f[0]; b.style.setProperty('--c', 'var(--accent)');
       b.setAttribute('aria-pressed', String(libFilter === f[1])); b.addEventListener('click', function () { libFilter = f[1]; renderLibrary(); });
       fl.appendChild(b);
     });
@@ -2955,7 +2975,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (name === 'local') { syncLocal(); }
     if (name === 'heal') { syncHeal(); flash(healMode === 'clone' ? 'Tap to set the source, then paint' : 'Paint over what you want to remove'); }
     if (name === 'library') renderLibrary();
-    if (name === 'local' || name === 'heal' || name === 'layers' || prevTab === 'local' || prevTab === 'heal' || prevTab === 'layers') schedule(); /* the picture itself is unchanged by switching tools */
+    if (name === 'local' || name === 'heal' || name === 'layers' || prevTab === 'local' || prevTab === 'heal' || prevTab === 'layers') scheduleOverlay(); /* the picture itself is unchanged by switching tools */
     if (name === 'curve') { sizeCurve(); drawCurve(); }
     if (name === 'crop' && !cropMode) startCrop();
   }
@@ -3017,7 +3037,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     exportMode = mode; $('sheet').hidden = false; refreshExport();
   }
   [['Original', 0], ['2048', 2048], ['1080', 1080], ['640', 640]].forEach(function (o) {
-    var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = o[0]; b.dataset.v = o[1]; b.style.setProperty('--c', '#ff7a3d');
+    var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = o[0]; b.dataset.v = o[1]; b.style.setProperty('--c', 'var(--accent)');
     b.addEventListener('click', function () { xs.size = o[1]; syncExportUI(); queueExport(); saveSettings(); });
     $('x-size').appendChild(b);
   });
@@ -3118,7 +3138,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     box.innerHTML = '';
     items.forEach(function (it) {
       var b = document.createElement('button'); b.className = 'chch'; b.type = 'button'; b.textContent = it[0];
-      b.style.setProperty('--c', color || '#ff7a3d'); b.setAttribute('aria-pressed', String(isOn(it[1])));
+      b.style.setProperty('--c', color || 'var(--accent)'); b.setAttribute('aria-pressed', String(isOn(it[1])));
       b.addEventListener('click', function () { pick(it[1]); syncSettingsUI(); });
       box.appendChild(b);
     });
@@ -3220,7 +3240,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function uid() { return 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function blobOf(cv) { return new Promise(function (res) { cv.toBlob(function (b) { res(b); }, 'image/jpeg', 0.92); }); }
   var saveT = 0, saving = false;
-  function scheduleDraft() { if (!docs[cur] || docs[cur].sample) return; clearTimeout(saveT); saveT = setTimeout(saveDraftNow, 900); }
+  function scheduleDraft() { if (!docs[cur] || docs[cur].sample) return; clearTimeout(saveT); saveT = setTimeout(function () { if (lDrag || hDrag || liveFast) { scheduleDraft(); return; } saveDraftNow(); }, 1800); } /* saving waits until you stop touching the photo */
   function saveDraftNow() {
     clearTimeout(saveT);
     var d = docs[cur]; if (!d || d.sample || !src) return Promise.resolve();
