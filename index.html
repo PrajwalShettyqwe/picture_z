@@ -272,7 +272,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
     <label for="picker2" id="h-files" role="button" tabindex="0" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:8px">Photo picker not opening? Choose from Files</label>
   </div>
-  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 8</div>
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 10</div>
 </div>
 <div class="scr" id="drafts" hidden>
   <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
@@ -378,13 +378,15 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
         <button class="btn sm" id="add-sky" type="button">+ Sky</button>
         <button class="btn sm" id="add-color" type="button">+ Color range</button>
         <button class="btn sm" id="add-luma" type="button">+ Brightness range</button>
+        <button class="btn sm" id="add-ai" type="button">+ AI select</button>
+        <button class="btn sm" id="add-smart" type="button">+ Draw to select</button>
         <button class="btn sm" id="add-subject" type="button">+ Tap to select</button>
       </div>
       <div class="chips" id="mask-chips"></div>
       <div id="mask-rows"></div>
     </div>
     <div class="pane" id="p-layers" hidden>
-      <p class="hint" style="margin:0 0 6px">Put a cut-out on this photo. First open another photo, use Local, then Tap to select on its subject. Then add it here.</p>
+      <p class="hint" style="margin:0 0 6px">Put a cut-out on this photo. First open another photo, use Local, then Draw to select (or Tap to select) on its subject. Then add it here.</p>
       <div class="chips" id="ly-src"></div>
       <div class="btnrow" style="margin-top:6px">
         <button class="btn sm" id="ly-file" type="button">+ From PNG file</button>
@@ -1073,7 +1075,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     maskCache.push({ key: key, val: val }); if (maskCache.length > 8) maskCache.shift();
     return val;
   }
-  function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || (m.t === 'b' && m.auto); }
+  function needsPix(m) { return m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || m.t === 'g' || (m.t === 'b' && m.auto); }
 
   /* returns true when the GPU did the work (the picture in ctx is then fully edited), false to let the CPU do it */
   function gpuRender(ctx, w, h, scale, upKey, warp, geo) {
@@ -1943,9 +1945,9 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     return st;
   }
   function applyLook(look) { state = lookToState(look, state); syncUI(); schedule(); commit(); }
-  function flash(msg) {
+  function flash(msg, ms) {
     var n = $('note'); n.hidden = false; n.textContent = msg;
-    clearTimeout(flash.t); flash.t = setTimeout(function () { n.hidden = true; }, 1800);
+    clearTimeout(flash.t); flash.t = setTimeout(function () { n.hidden = true; }, ms || 1800);
   }
   var SC = [[0, 0], [64, 52], [192, 204], [255, 255]];
   var BUILTIN = [
@@ -2066,6 +2068,188 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }
     return [r / n, g / n, b / n];
   }
+  /* ---------- AI select: a free open-source person model (MediaPipe) that runs on the phone ---------- */
+  var aiLastS = '', aiLastA = null, aiSeg = null, aiLoading = null, aiBusy = false;
+  var MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+  var AI_MODELS = [
+    'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite',
+    'https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite'
+  ];
+  function aiDecode(str) { /* base64 text back to 0..255 values, remembered for the last one used */
+    if (str === aiLastS && aiLastA) return aiLastA;
+    var bin = atob(str), a = new Uint8Array(bin.length), i; for (i = 0; i < bin.length; i++) a[i] = bin.charCodeAt(i);
+    aiLastS = str; aiLastA = a; return a;
+  }
+  function aiEncode(a) { var s = '', i; for (i = 0; i < a.length; i += 4096) s += String.fromCharCode.apply(null, a.subarray(i, i + 4096)); return btoa(s); }
+  function loadAI() {
+    if (aiSeg) return Promise.resolve(aiSeg);
+    if (aiLoading) return aiLoading;
+    aiLoading = import(MP_BASE + '/vision_bundle.mjs').then(function (mod) {
+      return mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm').then(function (fs) {
+        var k = 0;
+        function next() {
+          if (k >= AI_MODELS.length) return Promise.reject(new Error('model download failed'));
+          var url = AI_MODELS[k++];
+          return mod.ImageSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: url, delegate: 'CPU' }, runningMode: 'IMAGE', outputCategoryMask: false, outputConfidenceMasks: true }).catch(next);
+        }
+        return next();
+      });
+    }).then(function (sg) { aiSeg = sg; return sg; }, function (e) { aiLoading = null; throw e; });
+    return aiLoading;
+  }
+  function aiSegment(cv) { /* resolves { w, h, p } where p is the chance each pixel is a person, 0..1 */
+    if (window.__pzSeg) return window.__pzSeg(cv);
+    return loadAI().then(function (sg) {
+      var res = sg.segment(cv), ms = res.confidenceMasks || [], m0 = ms[0], w = m0.width, h = m0.height, a = m0.getAsFloat32Array(), p = new Float32Array(w * h), i;
+      if (ms.length >= 2) { for (i = 0; i < p.length; i++) p[i] = 1 - a[i]; } /* the first mask is the background */
+      else { /* one mask: the border of a photo is mostly background, so flip it if that border reads as person */
+        var bs = 0, bn = 0, x, y; for (y = 0; y < h; y++) for (x = 0; x < w; x++) if (x < 3 || y < 3 || x >= w - 3 || y >= h - 3) { bs += a[y * w + x]; bn++; }
+        var inv = bs / Math.max(1, bn) > 0.5; for (i = 0; i < p.length; i++) p[i] = inv ? 1 - a[i] : a[i];
+      }
+      try { ms.forEach(function (mm) { mm.close(); }); } catch (e) {}
+      return { w: w, h: h, p: p };
+    });
+  }
+  function runAI(m) {
+    if (aiBusy) return;
+    aiBusy = true;
+    var f = fullDims(), sc = Math.min(1, 512 / Math.max(f.w, f.h)), cv = document.createElement('canvas');
+    draw(cv, sc, true, FULL, false);
+    flash(aiSeg || window.__pzSeg ? 'AI is working…' : 'Loading AI. The first time downloads about 16 MB…', 60000);
+    return aiSegment(cv).then(function (r) {
+      var N = 128, out = new Uint8Array(N * N), x, y;
+      for (y = 0; y < N; y++) for (x = 0; x < N; x++) {
+        var sx = Math.min(r.w - 1, Math.floor((x + 0.5) / N * r.w)), sy = Math.min(r.h - 1, Math.floor((y + 0.5) / N * r.h));
+        out[y * N + x] = Math.round(Math.max(0, Math.min(1, r.p[sy * r.w + sx])) * 255);
+      }
+      m.ai = aiEncode(out); m.aiW = N; aiBusy = false; schedule(); commit();
+      flash('Done. Fix mistakes with Mark subject or Mark background', 4000);
+    }, function (e) {
+      aiBusy = false; flash('AI could not load. Check your internet, or use Draw to select instead.', 5000);
+    });
+  }
+  function smartWeights(m, w, h, geo, d) { /* scribble select: learns the colours you marked as subject and background, then settles each pixel so the border follows real edges */
+    var out = new Float32Array(w * h), i, j, x, y;
+    if (!d || !m.st || (!m.st.length && !m.ai)) return out;
+    var gs = Math.min(1, 320 / Math.max(w, h)), gw = Math.max(4, Math.round(w * gs)), gh = Math.max(4, Math.round(h * gs)), gn = gw * gh;
+    var g = new Float32Array(gn * 3), cnt = new Float32Array(gn);
+    for (y = 0; y < h; y++) {
+      var gy = Math.min(gh - 1, (y * gh / h) | 0);
+      for (x = 0; x < w; x++) {
+        var gx = Math.min(gw - 1, (x * gw / w) | 0), o = (y * w + x) * 4, k = gy * gw + gx;
+        g[k * 3] += d[o]; g[k * 3 + 1] += d[o + 1]; g[k * 3 + 2] += d[o + 2]; cnt[k]++;
+      }
+    }
+    for (i = 0; i < gn; i++) { var c0 = cnt[i] || 1; g[i * 3] /= c0; g[i * 3 + 1] /= c0; g[i * 3 + 2] /= c0; }
+    var seed = new Uint8Array(gn), sid = new Uint8Array(gn), curSid = 0, rad = Math.max(1.5, 0.018 * Math.max(gw, gh)), hasF = false, hasB = false;
+    function stamp(cx, cy, val) {
+      var y0 = Math.max(0, Math.floor(cy - rad)), y1 = Math.min(gh - 1, Math.ceil(cy + rad)), x0 = Math.max(0, Math.floor(cx - rad)), x1 = Math.min(gw - 1, Math.ceil(cx + rad)), yy, xx;
+      for (yy = y0; yy <= y1; yy++) for (xx = x0; xx <= x1; xx++) if ((xx - cx) * (xx - cx) + (yy - cy) * (yy - cy) <= rad * rad) { seed[yy * gw + xx] = val; sid[yy * gw + xx] = curSid; }
+    }
+    if (m.ai) { /* the AI's guess: where it is sure about person or background, it plants seeds; your strokes below override them */
+      var aiA = aiDecode(m.ai), aw = m.aiW || 128, fd = fullDims(), gx2, gy2;
+      for (gy2 = 0; gy2 < gh; gy2++) for (gx2 = 0; gx2 < gw; gx2++) {
+        var FX = (((gx2 + 0.5) * w / gw + geo.ox) / geo.scale + fd.w / 2) / fd.w * aw - 0.5, FY = (((gy2 + 0.5) * h / gh + geo.oy) / geo.scale + fd.h / 2) / fd.h * aw - 0.5; /* mask coordinates are measured from the middle of the photo */
+        if (FX < -0.5 || FY < -0.5 || FX > aw - 0.5 || FY > aw - 0.5) continue;
+        var ax0 = Math.max(0, Math.min(aw - 1, Math.floor(FX))), ay0 = Math.max(0, Math.min(aw - 1, Math.floor(FY))), ax1 = Math.min(aw - 1, ax0 + 1), ay1 = Math.min(aw - 1, ay0 + 1), atx = Math.max(0, Math.min(1, FX - ax0)), aty = Math.max(0, Math.min(1, FY - ay0));
+        var ap = ((aiA[ay0 * aw + ax0] * (1 - atx) + aiA[ay0 * aw + ax1] * atx) * (1 - aty) + (aiA[ay1 * aw + ax0] * (1 - atx) + aiA[ay1 * aw + ax1] * atx) * aty) / 255;
+        var gi = gy2 * gw + gx2;
+        if (ap > 0.92) { seed[gi] = 1; sid[gi] = 250; hasF = true; } else if (ap < 0.06) { seed[gi] = 2; sid[gi] = 251; hasB = true; }
+      }
+    }
+    m.st.forEach(function (st, si) {
+      var val = st.k === 'f' ? 1 : 2, px = null, py = null; curSid = Math.min(255, si + 1);
+      if (val === 1) hasF = true; else hasB = true;
+      st.p.forEach(function (pt) {
+        var cx = (pt[0] * geo.scale - geo.ox) * gw / w, cy = (pt[1] * geo.scale - geo.oy) * gh / h;
+        if (px !== null) { var n = Math.max(1, Math.ceil(Math.hypot(cx - px, cy - py) / (rad * 0.5))), t; for (t = 1; t <= n; t++) stamp(px + (cx - px) * t / n, py + (cy - py) * t / n, val); }
+        else stamp(cx, cy, val);
+        px = cx; py = cy;
+      });
+    });
+    if (m.ai && m.st.length) { /* if you marked a colour the AI got wrong, drop the AI's seeds of that colour so your correction is not outvoted */
+      var us = {}, uk;
+      for (i = 0; i < gn; i++) if (seed[i] && sid[i] < 250) { var ue = us[sid[i]] = us[sid[i]] || { v: seed[i], r: 0, g: 0, b: 0, n: 0 }; ue.r += g[i * 3]; ue.g += g[i * 3 + 1]; ue.b += g[i * 3 + 2]; ue.n++; }
+      var ul = []; for (uk in us) ul.push({ v: us[uk].v, r: us[uk].r / us[uk].n, g: us[uk].g / us[uk].n, b: us[uk].b / us[uk].n });
+      for (i = 0; i < gn; i++) {
+        if (sid[i] < 250 || !seed[i]) continue;
+        for (j = 0; j < ul.length; j++) {
+          if (ul[j].v === seed[i]) continue; /* same label: nothing to fix */
+          var er = g[i * 3] - ul[j].r, eg = g[i * 3 + 1] - ul[j].g, eb = g[i * 3 + 2] - ul[j].b;
+          if (Math.sqrt(er * er + eg * eg + eb * eb) < 38) { seed[i] = 0; sid[i] = 0; break; }
+        }
+      }
+    }
+    if (!hasF) return out;
+    function samples(val) { var a = []; for (i = 0; i < gn; i++) if (seed[i] === val) a.push(i); return a; }
+    var fS = samples(1), bS = hasB ? samples(2) : [];
+    if (!bS.length) { var ring = Math.max(2, Math.round(Math.max(gw, gh) * 0.03)); for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) if (!seed[y * gw + x] && (x < ring || y < ring || x >= gw - ring || y >= gh - ring)) bS.push(y * gw + x); }
+    function kmeans(list, K) {
+      if (!list.length) return [];
+      K = Math.min(K, list.length);
+      var sorted = list.slice().sort(function (a, b) { return (g[a * 3] + g[a * 3 + 1] + g[a * 3 + 2]) - (g[b * 3] + g[b * 3 + 1] + g[b * 3 + 2]); }), cs = [], it, kk;
+      for (kk = 0; kk < K; kk++) { var q = sorted[Math.min(sorted.length - 1, Math.floor((kk + 0.5) * sorted.length / K))]; cs.push([g[q * 3], g[q * 3 + 1], g[q * 3 + 2]]); }
+      for (it = 0; it < 8; it++) {
+        var acc = cs.map(function () { return [0, 0, 0, 0]; });
+        list.forEach(function (idx) {
+          var r = g[idx * 3], gg = g[idx * 3 + 1], b = g[idx * 3 + 2], best = 0, bd = 1e9, c;
+          for (c = 0; c < cs.length; c++) { var dd = (r - cs[c][0]) * (r - cs[c][0]) + (gg - cs[c][1]) * (gg - cs[c][1]) + (b - cs[c][2]) * (b - cs[c][2]); if (dd < bd) { bd = dd; best = c; } }
+          acc[best][0] += r; acc[best][1] += gg; acc[best][2] += b; acc[best][3]++;
+        });
+        for (kk = 0; kk < cs.length; kk++) if (acc[kk][3]) cs[kk] = [acc[kk][0] / acc[kk][3], acc[kk][1] / acc[kk][3], acc[kk][2] / acc[kk][3]];
+      }
+      return cs;
+    }
+    function modelFor(val, fallback) { /* each stroke gets its own colours, so a small area such as jeans is not drowned out by a big one */
+      var per = {}, cs = [], key;
+      for (i = 0; i < gn; i++) if (seed[i] === val) (per[sid[i]] = per[sid[i]] || []).push(i);
+      for (key in per) cs = cs.concat(kmeans(per[key], 2));
+      return cs.length ? cs : kmeans(fallback, 5);
+    }
+    var fC = modelFor(1, fS), bC = hasB ? modelFor(2, bS) : kmeans(bS, 5);
+    function minDist(cs, r, gg, b) { var best = 1e9, c; for (c = 0; c < cs.length; c++) { var dd = (r - cs[c][0]) * (r - cs[c][0]) + (gg - cs[c][1]) * (gg - cs[c][1]) + (b - cs[c][2]) * (b - cs[c][2]); if (dd < best) best = dd; } return Math.sqrt(best); }
+    var u = new Float32Array(gn), p = new Float32Array(gn);
+    for (i = 0; i < gn; i++) {
+      var dF = minDist(fC, g[i * 3], g[i * 3 + 1], g[i * 3 + 2]), dB = minDist(bC, g[i * 3], g[i * 3 + 1], g[i * 3 + 2]);
+      u[i] = dB / (dF + dB + 1); p[i] = seed[i] === 1 ? 1 : seed[i] === 2 ? 0 : u[i];
+    }
+    var wR = new Float32Array(gn), wD = new Float32Array(gn), beta = 28;
+    for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+      i = y * gw + x;
+      if (x < gw - 1) { var a1 = (g[i * 3] - g[i * 3 + 3]), a2 = (g[i * 3 + 1] - g[i * 3 + 4]), a3 = (g[i * 3 + 2] - g[i * 3 + 5]); wR[i] = Math.exp(-beta * (a1 * a1 + a2 * a2 + a3 * a3) / (3 * 255 * 255) * 6); }
+      if (y < gh - 1) { var b1 = (g[i * 3] - g[(i + gw) * 3]), b2 = (g[i * 3 + 1] - g[(i + gw) * 3 + 1]), b3 = (g[i * 3 + 2] - g[(i + gw) * 3 + 2]); wD[i] = Math.exp(-beta * (b1 * b1 + b2 * b2 + b3 * b3) / (3 * 255 * 255) * 6); }
+    }
+    var lam = 0.12, iter;
+    for (iter = 0; iter < 140; iter++) {
+      for (y = 0; y < gh; y++) for (x = 0; x < gw; x++) {
+        i = y * gw + x; if (seed[i]) continue;
+        var sw = lam, sp = lam * u[i], wv;
+        if (x > 0) { wv = wR[i - 1]; sw += wv; sp += wv * p[i - 1]; }
+        if (x < gw - 1) { wv = wR[i]; sw += wv; sp += wv * p[i + 1]; }
+        if (y > 0) { wv = wD[i - gw]; sw += wv; sp += wv * p[i - gw]; }
+        if (y < gh - 1) { wv = wD[i]; sw += wv; sp += wv * p[i + gw]; }
+        p[i] = sp / sw;
+      }
+    }
+    var f = new Float32Array(gn);
+    for (i = 0; i < gn; i++) f[i] = smooth((p[i] - 0.5) * 3 + 0.5);
+    for (y = 0; y < h; y++) {
+      var fy = (y + 0.5) * gh / h - 0.5, y0 = Math.max(0, Math.min(gh - 1, Math.floor(fy))), y1 = Math.min(gh - 1, y0 + 1), ty = Math.max(0, fy - y0);
+      for (x = 0; x < w; x++) {
+        var fx = (x + 0.5) * gw / w - 0.5, x0 = Math.max(0, Math.min(gw - 1, Math.floor(fx))), x1 = Math.min(gw - 1, x0 + 1), tx = Math.max(0, fx - x0);
+        out[y * w + x] = (f[y0 * gw + x0] * (1 - tx) + f[y0 * gw + x1] * tx) * (1 - ty) + (f[y1 * gw + x0] * (1 - tx) + f[y1 * gw + x1] * tx) * ty;
+      }
+    }
+    for (i = 0; i < w * h; i++) { /* on the border band, use the colours of each full-size pixel to sharpen the edge */
+      var v = out[i]; if (v <= 0.03 || v >= 0.97) continue;
+      var q2 = i * 4, dF2 = minDist(fC, d[q2], d[q2 + 1], d[q2 + 2]), dB2 = minDist(bC, d[q2], d[q2 + 1], d[q2 + 2]), pf = dB2 / (dF2 + dB2 + 1);
+      out[i] = smooth(((v + pf) * 0.5 - 0.5) * 3 + 0.5);
+    }
+    var fr = Math.round((m.feather || 0) / 100 * 0.012 * Math.max(w, h));
+    if (fr >= 1) out = boxBlurF(out, w, h, fr);
+    if (m.inv) for (i = 0; i < out.length; i++) out[i] = 1 - out[i];
+    return out;
+  }
   function subjectWeights(m, w, h, geo, d) { /* tap to select: grows a region from each tapped point, stopping at colour changes and edges */
     var out = new Float32Array(w * h), i, x, y;
     if (!d || !m.seeds || !m.seeds.length) return out;
@@ -2130,6 +2314,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function maskWeights(m, w, h, geo, d) {
     var out = new Float32Array(w * h), x, y, i = 0, sc = geo.scale;
     if (m.t === 'o') return subjectWeights(m, w, h, geo, d);
+    if (m.t === 'g') return smartWeights(m, w, h, geo, d);
     if (m.t === 's' || m.t === 'c' || m.t === 'y') {
       if (!d) return out;
       var fd = fullDims(), n = w * h, f = m.feather / 100;
@@ -2285,7 +2470,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var prev = skipLayers; skipLayers = true;
     try {
       return withDoc(d, function () {
-        var ms = (state.masks || []).filter(function (m) { return m.t === 'o' && m.seeds && m.seeds.length; });
+        var ms = (state.masks || []).filter(function (m) { return (m.t === 'o' && m.seeds && m.seeds.length) || (m.t === 'g' && m.st && (m.ai || m.st.some(function (q) { return q.k === 'f'; }))); });
         if (!ms.length) return null;
         var f = fullDims(), cr = state.crop, longEdge = Math.max(f.w * cr.w, f.h * cr.h), sc = Math.min(1, maxEdge / longEdge);
         var off = document.createElement('canvas'), pl = document.createElement('canvas');
@@ -2315,7 +2500,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   }
   function addLayerFromDoc(i) {
     var cv = cutoutCanvasFor(docs[i], 1600);
-    if (!cv) { flash('Use Local, then Tap to select on that photo first'); return; }
+    if (!cv) { flash('Use Local, then Tap to select or Draw to select on that photo first'); return; }
     newLayer(cv, docs[i].name);
   }
   var lyPicker = document.createElement('input'); lyPicker.type = 'file'; lyPicker.accept = 'image/*'; lyPicker.hidden = true; document.body.appendChild(lyPicker);
@@ -2394,7 +2579,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   function toCv(X, Y) { return [X * viewGeo.scale - viewGeo.ox, Y * viewGeo.scale - viewGeo.oy]; }
   function canvasPt(e) { var r = view.getBoundingClientRect(); return { px: (e.clientX - r.left) * view.width / r.width, py: (e.clientY - r.top) * view.height / r.height }; }
 
-  var maskSel = -1, lDrag = null, MASKNAMES = { b: 'Brush', l: 'Linear', r: 'Radial', s: 'Sky', c: 'Color', y: 'Luma', o: 'Subject' };
+  var maskSel = -1, lDrag = null, MASKNAMES = { b: 'Brush', l: 'Linear', r: 'Radial', s: 'Sky', c: 'Color', y: 'Luma', o: 'Subject', g: 'Smart' };
   function curMask() { return state.masks[maskSel] || null; }
   function addMask(t) {
     var d = fullDims(), m = { t: t, inv: false, feather: 70, adj: { e: 0, c: 0, s: 0, t: 0 } };
@@ -2404,10 +2589,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (t === 's') { m.feather = 40; m.adj.e = -30; m.adj.s = 20; }
     if (t === 'c') { m.col = [128, 128, 128]; m.tol = 30; m.feather = 40; m.adj.s = 30; }
     if (t === 'y') { m.lo = 60; m.hi = 100; m.feather = 40; m.adj.e = -30; }
+    if (t === 'g') { m.st = []; m.mode = 'f'; m.feather = 20; m.adj.e = 25; }
     if (t === 'o') { m.seeds = []; m.tol = 35; m.feather = 30; m.adj.e = 25; }
     state.masks.push(m); maskSel = state.masks.length - 1;
     syncLocal(); schedule(); commit();
-    flash(t === 'o' ? 'Tap the subject on the photo' : t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
+    flash(t === 'g' ? 'Scribble over the subject. Then tap Mark background and scribble the background' : t === 'o' ? 'Tap the subject on the photo' : t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
   }
   $('add-brush').addEventListener('click', function () { addMask('b'); });
   $('add-linear').addEventListener('click', function () { addMask('l'); });
@@ -2416,6 +2602,8 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   $('add-color').addEventListener('click', function () { addMask('c'); });
   $('add-luma').addEventListener('click', function () { addMask('y'); });
   $('add-subject').addEventListener('click', function () { addMask('o'); });
+  $('add-smart').addEventListener('click', function () { addMask('g'); });
+  $('add-ai').addEventListener('click', function () { addMask('g'); var m = curMask(); if (m) runAI(m); });
   $('mask-del').addEventListener('click', function () {
     if (!curMask()) return;
     state.masks.splice(maskSel, 1); maskSel = state.masks.length - 1; syncLocal(); schedule(); commit();
@@ -2441,12 +2629,17 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   var autoBtn = document.createElement('button'); autoBtn.className = 'btn sm'; autoBtn.type = 'button'; autoBtn.style.cssText = 'margin:4px 6px 0 0';
   autoBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'b') { m.auto = !m.auto; syncLocal(); schedule(); commit(); } });
   $('mask-rows').appendChild(autoBtn);
-  var seedBtn = document.createElement('button'); seedBtn.className = 'btn sm'; seedBtn.type = 'button'; seedBtn.textContent = 'Undo last tap'; seedBtn.style.cssText = 'margin:4px 6px 0 0';
-  seedBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'o' && m.seeds.length) { m.seeds.pop(); schedule(); commit(); } });
+  var seedBtn = document.createElement('button'); seedBtn.className = 'btn sm'; seedBtn.type = 'button'; seedBtn.textContent = 'Undo last'; seedBtn.style.cssText = 'margin:4px 6px 0 0';
+  seedBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'o' && m.seeds.length) { m.seeds.pop(); schedule(); commit(); } else if (m && m.t === 'g' && m.st.length) { m.st.pop(); schedule(); commit(); } });
   $('mask-rows').appendChild(seedBtn);
   var cutBtn = document.createElement('button'); cutBtn.className = 'btn sm'; cutBtn.type = 'button'; cutBtn.textContent = 'Save cut-out (PNG)'; cutBtn.style.cssText = 'margin:4px 6px 0 0';
-  cutBtn.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'o') saveCutout(m); });
+  cutBtn.addEventListener('click', function () { var m = curMask(); if (m && (m.t === 'o' || m.t === 'g')) saveCutout(m); });
   $('mask-rows').appendChild(cutBtn);
+  var modeF = document.createElement('button'), modeB = document.createElement('button');
+  [modeF, modeB].forEach(function (b, n) { b.className = 'btn sm'; b.type = 'button'; b.textContent = n ? 'Mark background' : 'Mark subject'; b.style.cssText = 'margin:4px 6px 0 0'; $('mask-rows').appendChild(b); });
+  function paintModes(m) { modeF.style.outline = m && m.mode !== 'b' ? '2px solid #39b36a' : 'none'; modeB.style.outline = m && m.mode === 'b' ? '2px solid #e5534b' : 'none'; }
+  modeF.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'f'; paintModes(m); } });
+  modeB.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'b'; paintModes(m); } });
   var invBtn = document.createElement('button'); invBtn.className = 'btn sm'; invBtn.type = 'button'; invBtn.textContent = 'Invert mask';
   invBtn.style.marginTop = '4px';
   invBtn.addEventListener('click', function () { var m = curMask(); if (m) { m.inv = !m.inv; syncLocal(); schedule(); commit(); } });
@@ -2471,7 +2664,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     mrows.p1.row.querySelector('label').textContent = m.t === 'y' ? 'Min' : 'Range';
     mrows.p2.row.querySelector('label').textContent = 'Max';
     if (m.t === 'c' || m.t === 'o') mrows.p1.set(m.tol); if (m.t === 'y') { mrows.p1.set(m.lo); mrows.p2.set(m.hi); }
-    seedBtn.hidden = cutBtn.hidden = m.t !== 'o'; autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
+    seedBtn.hidden = m.t !== 'o' && m.t !== 'g'; cutBtn.hidden = m.t !== 'o' && m.t !== 'g'; modeF.hidden = modeB.hidden = m.t !== 'g'; if (m.t === 'g') paintModes(m); autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
     if (m.t === 'b') mrows.size.set(m.size); else if (m.t === 'r') mrows.size.set(m.rad / (mdim() * 0.5) * 100);
     mrows.feather.set(m.feather);
     invBtn.textContent = m.inv ? 'Mask inverted' : 'Invert mask';
@@ -2481,7 +2674,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     var w = view.width, h = view.height, k = scaleK(), g = vctx;
     var geoNow = viewGeo; /* the overlay shares the weights the picture itself used, so dragging an adjustment slider does not rebuild them */
     var wt = maskWeightsCached(m, w, h, geoNow, function () {
-      if (!(m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || (m.t === 'b' && m.auto))) return null;
+      if (!(m.t === 's' || m.t === 'c' || m.t === 'y' || m.t === 'o' || m.t === 'g' || (m.t === 'b' && m.auto))) return null;
       var rc = document.createElement('canvas'); draw(rc, geoNow.scale, true);
       var d = rc.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, rc.width, rc.height).data;
       return (rc.width !== w || rc.height !== h) ? null : d;
@@ -2499,6 +2692,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
       g.beginPath(); g.arc(c[0], c[1], m.rad * viewGeo.scale, 0, Math.PI * 2); g.stroke(); handle(m.c[0], m.c[1]); handle(m.c[0] + m.rad, m.c[1]);
     }
     else if (m.t === 'o') { m.seeds.forEach(function (sd) { var p = toCv(sd[0], sd[1]); g.beginPath(); g.arc(p[0], p[1], 6 * k, 0, Math.PI * 2); g.fill(); g.stroke(); }); }
+    else if (m.t === 'g') {
+      var lw = 0.036 * Math.max(view.width, view.height), all = m.st.slice(); if (lDrag && lDrag.mode === 'stroke') all.push({ k: m.mode === 'b' ? 'b' : 'f', p: lDrag.pts });
+      g.lineCap = 'round'; g.lineJoin = 'round'; g.lineWidth = lw; g.globalAlpha = 0.45;
+      all.forEach(function (st) { g.strokeStyle = st.k === 'f' ? '#39b36a' : '#e5534b'; g.beginPath(); st.p.forEach(function (pt, n) { var c = toCv(pt[0], pt[1]); if (n) g.lineTo(c[0], c[1]); else g.moveTo(c[0], c[1]); if (st.p.length === 1) g.lineTo(c[0] + 0.1, c[1]); }); g.stroke(); });
+    }
     g.restore();
   }
   view.addEventListener('pointerdown', function (e) {
@@ -2507,6 +2705,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     e.preventDefault(); try { view.setPointerCapture(e.pointerId); } catch (err) {}
     var p = toXY(canvasPt(e)), tol = 40 * scaleK() / viewGeo.scale;
     if (m.t === 's' || m.t === 'y') return;
+    if (m.t === 'g') { lDrag = { mode: 'stroke', pts: [p] }; schedule(); return; }
     if (m.t === 'o') { m.seeds.push(p); lDrag = { mode: 'seed' }; flash('Added. Tap more areas, or change Range'); schedule(); return; }
     if (m.t === 'c') {
       var pc = document.createElement('canvas'); draw(pc, viewGeo.scale, true);
@@ -2530,11 +2729,12 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (lDrag.mode === 'paint') { if (Math.hypot(p[0] - lDrag.last[0], p[1] - lDrag.last[1]) > m.size * mdim() / 200 * 0.25) { m.pts.push(p); lDrag.last = p; } }
     else if (lDrag.mode === 'p0' || lDrag.mode === 'p1') m[lDrag.mode] = p;
     else if (lDrag.mode === 'pick' || lDrag.mode === 'seed') { return; }
+    else if (lDrag.mode === 'stroke') { var lp = lDrag.pts[lDrag.pts.length - 1]; if (Math.hypot(p[0] - lp[0], p[1] - lp[1]) > mdim() * 0.004) lDrag.pts.push(p); }
     else if (lDrag.mode === 'rad') { m.rad = Math.max(8, Math.hypot(p[0] - m.c[0], p[1] - m.c[1])); mrows.size.set(m.rad / (mdim() * 0.5) * 100); }
     else m.c = p;
     schedule();
   });
-  function lUp() { if (lDrag) { lDrag = null; commit(); } }
+  function lUp() { if (lDrag) { if (lDrag.mode === 'stroke') { var m = curMask(); if (m && m.t === 'g' && lDrag.pts.length) { m.st.push({ k: m.mode === 'b' ? 'b' : 'f', p: lDrag.pts }); schedule(); } } lDrag = null; commit(); } }
   view.addEventListener('pointerup', lUp); view.addEventListener('pointercancel', lUp);
 
   /* heal / clone */
