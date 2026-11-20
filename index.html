@@ -273,7 +273,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     <button class="hbtn" id="h-drafts" type="button">Drafts<small id="h-dc">Saved edits</small></button>
     <label for="picker2" id="h-files" role="button" tabindex="0" style="color:var(--muted);font-size:14px;text-decoration:underline;padding:8px">Photo picker not opening? Choose from Files</label>
   </div>
-  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 12</div>
+  <div style="text-align:center;color:var(--muted);font-size:11px;padding:0 0 14px">Version 13</div>
 </div>
 <div class="scr" id="drafts" hidden>
   <div class="dtop"><button class="backb" id="d-back" type="button">&larr; Back</button><h2>Drafts</h2></div>
@@ -379,6 +379,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
         <button class="btn sm" id="add-sky" type="button">+ Sky</button>
         <button class="btn sm" id="add-color" type="button">+ Color range</button>
         <button class="btn sm" id="add-luma" type="button">+ Brightness range</button>
+        <button class="btn sm" id="add-tapai" type="button">+ Tap AI cut</button>
         <button class="btn sm" id="add-ai" type="button">+ AI select</button>
         <button class="btn sm" id="add-smart" type="button">+ Draw to select</button>
         <button class="btn sm" id="add-subject" type="button">+ Tap to select</button>
@@ -2117,6 +2118,59 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     }).then(function (sg) { aiSeg = sg; return sg; }, function (e) { aiLoading = null; throw e; });
     return aiLoading;
   }
+  var TAP_MODELS = [
+    'https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/1/magic_touch.tflite',
+    'https://storage.googleapis.com/mediapipe-models/interactive_segmenter/magic_touch/float32/latest/magic_touch.tflite'
+  ];
+  var tapSeg = null, tapLoading = null, tapBusy = false;
+  function loadTap() {
+    if (tapSeg) return Promise.resolve(tapSeg);
+    if (tapLoading) return tapLoading;
+    tapLoading = import(MP_BASE + '/vision_bundle.mjs').then(function (mod) {
+      return mod.FilesetResolver.forVisionTasks(MP_BASE + '/wasm').then(function (fs) {
+        var k = 0;
+        function next() {
+          if (k >= TAP_MODELS.length) return Promise.reject(new Error('model download failed'));
+          var url = TAP_MODELS[k++];
+          return mod.InteractiveSegmenter.createFromOptions(fs, { baseOptions: { modelAssetPath: url, delegate: 'CPU' }, outputCategoryMask: false, outputConfidenceMasks: true }).catch(next);
+        }
+        return next();
+      });
+    }).then(function (sg) { tapSeg = sg; return sg; }, function (e) { tapLoading = null; throw e; });
+    return tapLoading;
+  }
+  function tapSegment(cv, nx, ny) { /* resolves { w, h, p }: the chance each pixel belongs to the object under the tap */
+    if (window.__pzTap) return window.__pzTap(cv, nx, ny);
+    return loadTap().then(function (sg) {
+      var got = null, ret = sg.segment(cv, { keypoint: { x: nx, y: ny } }, function (a) { got = a; }), res = ret || got, ms = [], m0, w, h, a, p, i;
+      if (res && res.confidenceMasks) ms = res.confidenceMasks; else if (Array.isArray(res)) ms = res;
+      if (!ms.length) throw new Error('no mask');
+      m0 = ms.length >= 2 ? ms[1] : ms[0]; w = m0.width; h = m0.height; a = m0.getAsFloat32Array(); p = new Float32Array(w * h);
+      for (i = 0; i < p.length; i++) p[i] = a[i];
+      try { ms.forEach(function (mm) { mm.close(); }); } catch (e) {}
+      return { w: w, h: h, p: p };
+    });
+  }
+  function runTap(m, X, Y) { /* tap an object: cut it out. Each tap adds another object. */
+    if (tapBusy) return;
+    tapBusy = true;
+    var f = fullDims(), sc = Math.min(1, 512 / Math.max(f.w, f.h)), cv = document.createElement('canvas');
+    draw(cv, sc, true, FULL, false);
+    flash(tapSeg || window.__pzTap ? 'Cutting out…' : 'Loading AI. The first time downloads about 6 MB…', 60000);
+    return tapSegment(cv, Math.max(0, Math.min(1, (X + f.w / 2) / f.w)), Math.max(0, Math.min(1, (Y + f.h / 2) / f.h))).then(function (r) {
+      var N = 128, old = m.ai ? aiDecode(m.ai) : null, oldW = m.aiW || 128, out = new Uint8Array(N * N), x, y;
+      for (y = 0; y < N; y++) for (x = 0; x < N; x++) {
+        var sx = Math.min(r.w - 1, Math.floor((x + 0.5) / N * r.w)), sy = Math.min(r.h - 1, Math.floor((y + 0.5) / N * r.h));
+        var v = Math.round(Math.max(0, Math.min(1, r.p[sy * r.w + sx])) * 255);
+        if (old && oldW === N && old[y * N + x] > v) v = old[y * N + x];
+        out[y * N + x] = v;
+      }
+      m.ai = aiEncode(out); m.aiW = N; tapBusy = false; schedule(); commit();
+      flash('Done. Tap another object to add it, or use Mark background to fix edges', 4500);
+    }, function (e) {
+      tapBusy = false; flash('Tap AI could not load. Check your internet, or use Draw to select instead.', 5000);
+    });
+  }
   function aiSegment(cv) { /* resolves { w, h, p } where p is the chance each pixel is a person, 0..1 */
     if (window.__pzSeg) return window.__pzSeg(cv);
     return loadAI().then(function (sg) {
@@ -2601,7 +2655,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
 
   var maskSel = -1, lDrag = null, MASKNAMES = { b: 'Brush', l: 'Linear', r: 'Radial', s: 'Sky', c: 'Color', y: 'Luma', o: 'Subject', g: 'Smart' };
   function curMask() { return state.masks[maskSel] || null; }
-  function addMask(t) {
+  function addMask(t, tap) {
     var d = fullDims(), m = { t: t, inv: false, feather: 70, adj: { e: 0, c: 0, s: 0, t: 0 } };
     if (t === 'b') { m.pts = []; m.size = 12; m.adj.e = 30; }
     if (t === 'l') { m.p0 = [0, -d.h * 0.3]; m.p1 = [0, d.h * 0.05]; m.adj.e = -40; }
@@ -2609,11 +2663,11 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     if (t === 's') { m.feather = 40; m.adj.e = -30; m.adj.s = 20; }
     if (t === 'c') { m.col = [128, 128, 128]; m.tol = 30; m.feather = 40; m.adj.s = 30; }
     if (t === 'y') { m.lo = 60; m.hi = 100; m.feather = 40; m.adj.e = -30; }
-    if (t === 'g') { m.st = []; m.mode = 'f'; m.feather = 20; m.adj.e = 25; }
+    if (t === 'g') { m.st = []; m.mode = 'f'; if (tap) m.mode = 't'; m.feather = 20; m.adj.e = 25; }
     if (t === 'o') { m.seeds = []; m.tol = 35; m.feather = 30; m.adj.e = 25; }
     state.masks.push(m); maskSel = state.masks.length - 1;
     syncLocal(); schedule(); commit();
-    flash(t === 'g' ? 'Scribble over the subject. Then tap Mark background and scribble the background' : t === 'o' ? 'Tap the subject on the photo' : t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
+    flash(t === 'g' && tap ? 'Tap the object you want to cut out' : t === 'g' ? 'Scribble over the subject. Then tap Mark background and scribble the background' : t === 'o' ? 'Tap the subject on the photo' : t === 'b' ? 'Paint on the photo' : t === 'c' ? 'Tap the photo to pick a color' : (t === 's' || t === 'y') ? 'Adjust the sliders to refine the selection' : 'Drag the handles on the photo');
   }
   $('add-brush').addEventListener('click', function () { addMask('b'); });
   $('add-linear').addEventListener('click', function () { addMask('l'); });
@@ -2623,6 +2677,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   $('add-luma').addEventListener('click', function () { addMask('y'); });
   $('add-subject').addEventListener('click', function () { addMask('o'); });
   $('add-smart').addEventListener('click', function () { addMask('g'); });
+  $('add-tapai').addEventListener('click', function () { addMask('g', true); });
   $('add-ai').addEventListener('click', function () { addMask('g'); var m = curMask(); if (m) runAI(m); });
   $('mask-del').addEventListener('click', function () {
     if (!curMask()) return;
@@ -2655,11 +2710,12 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
   var cutBtn = document.createElement('button'); cutBtn.className = 'btn sm'; cutBtn.type = 'button'; cutBtn.textContent = 'Save cut-out (PNG)'; cutBtn.style.cssText = 'margin:4px 6px 0 0';
   cutBtn.addEventListener('click', function () { var m = curMask(); if (m && (m.t === 'o' || m.t === 'g')) saveCutout(m); });
   $('mask-rows').appendChild(cutBtn);
-  var modeF = document.createElement('button'), modeB = document.createElement('button');
-  [modeF, modeB].forEach(function (b, n) { b.className = 'btn sm'; b.type = 'button'; b.textContent = n ? 'Mark background' : 'Mark subject'; b.style.cssText = 'margin:4px 6px 0 0'; $('mask-rows').appendChild(b); });
-  function paintModes(m) { modeF.style.outline = m && m.mode !== 'b' ? '2px solid var(--fg)' : 'none'; modeB.style.outline = m && m.mode === 'b' ? '2px dashed var(--fg)' : 'none'; }
+  var modeF = document.createElement('button'), modeB = document.createElement('button'), modeT = document.createElement('button');
+  [modeF, modeB, modeT].forEach(function (b, n) { b.className = 'btn sm'; b.type = 'button'; b.textContent = n === 2 ? 'Tap object' : n ? 'Mark background' : 'Mark subject'; b.style.cssText = 'margin:4px 6px 0 0'; $('mask-rows').appendChild(b); });
+  function paintModes(m) { modeF.style.outline = m && m.mode === 'f' ? '2px solid var(--fg)' : 'none'; modeB.style.outline = m && m.mode === 'b' ? '2px dashed var(--fg)' : 'none'; modeT.style.outline = m && m.mode === 't' ? '2px solid var(--fg)' : 'none'; }
   modeF.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'f'; paintModes(m); } });
   modeB.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 'b'; paintModes(m); } });
+  modeT.addEventListener('click', function () { var m = curMask(); if (m && m.t === 'g') { m.mode = 't'; paintModes(m); flash('Tap the object you want to cut out'); } });
   var invBtn = document.createElement('button'); invBtn.className = 'btn sm'; invBtn.type = 'button'; invBtn.textContent = 'Invert mask';
   invBtn.style.marginTop = '4px';
   invBtn.addEventListener('click', function () { var m = curMask(); if (m) { m.inv = !m.inv; syncLocal(); schedule(); commit(); } });
@@ -2684,10 +2740,10 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     mrows.p1.row.querySelector('label').textContent = m.t === 'y' ? 'Min' : 'Range';
     mrows.p2.row.querySelector('label').textContent = 'Max';
     if (m.t === 'c' || m.t === 'o') mrows.p1.set(m.tol); if (m.t === 'y') { mrows.p1.set(m.lo); mrows.p2.set(m.hi); }
-    seedBtn.hidden = m.t !== 'o' && m.t !== 'g'; cutBtn.hidden = m.t !== 'o' && m.t !== 'g'; modeF.hidden = modeB.hidden = m.t !== 'g'; if (m.t === 'g') paintModes(m); autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
+    seedBtn.hidden = m.t !== 'o' && m.t !== 'g'; cutBtn.hidden = m.t !== 'o' && m.t !== 'g'; modeF.hidden = modeB.hidden = modeT.hidden = m.t !== 'g'; if (m.t === 'g') paintModes(m); autoBtn.hidden = m.t !== 'b'; autoBtn.textContent = m.auto ? 'Auto mask on' : 'Auto mask off';
     if (m.t === 'b') mrows.size.set(m.size); else if (m.t === 'r') mrows.size.set(m.rad / (mdim() * 0.5) * 100);
     mrows.feather.set(m.feather);
-    invBtn.textContent = m.inv ? 'Mask inverted' : 'Invert mask';
+    invBtn.textContent = (m.t === 'g' || m.t === 'o') ? (m.inv ? 'Selecting: Background (tap for Subject)' : 'Selecting: Subject (tap for Background)') : (m.inv ? 'Mask inverted' : 'Invert mask');
   }
   function drawMaskOverlay() {
     var m = curMask(); if (!m) return;
@@ -2725,6 +2781,7 @@ input[type=range]::-moz-range-thumb { width: 4px; height: 28px; border-radius: 2
     e.preventDefault(); try { view.setPointerCapture(e.pointerId); } catch (err) {}
     var p = toXY(canvasPt(e)), tol = 40 * scaleK() / viewGeo.scale;
     if (m.t === 's' || m.t === 'y') return;
+    if (m.t === 'g' && m.mode === 't') { lDrag = { mode: 'seed' }; runTap(m, p[0], p[1]); return; }
     if (m.t === 'g') { lDrag = { mode: 'stroke', pts: [p] }; schedule(); return; }
     if (m.t === 'o') { m.seeds.push(p); lDrag = { mode: 'seed' }; flash('Added. Tap more areas, or change Range'); schedule(); return; }
     if (m.t === 'c') {
